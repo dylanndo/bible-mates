@@ -2,9 +2,14 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import React, { useEffect, useState } from 'react';
 import 'react-native-reanimated';
 
-import { useColorScheme } from '@/hooks/useColorScheme';
+import { useColorScheme } from '../hooks/useColorScheme';
+
+// Firebase Auth imports
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { auth } from '../firebase';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -12,15 +17,33 @@ export default function RootLayout() {
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
 
-  if (!loaded) {
-    // Async font loading only occurs in development.
+  // Auth state
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      setUser(firebaseUser);
+      setAuthLoading(false);
+    });
+    return unsubscribe;
+  }, []);
+
+  if (!loaded || authLoading) {
+    // You can return a splash screen or loader here if you want
     return null;
   }
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack screenOptions={{ headerShown: false }}>
+        {user ? (
+          // User is logged in: show tabs
+          <Stack.Screen name="(tabs)" />
+        ) : (
+          // User is not logged in: show LoginScreen
+          <Stack.Screen name="LoginScreen" />
+        )}
         <Stack.Screen name="+not-found" />
       </Stack>
       <StatusBar style="auto" />
