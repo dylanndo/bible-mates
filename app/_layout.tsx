@@ -8,8 +8,12 @@ import 'react-native-reanimated';
 import { useColorScheme } from '../hooks/useColorScheme';
 
 // Firebase Auth imports
-import { onAuthStateChanged, User } from 'firebase/auth';
+import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { auth } from '../firebase';
+
+const handleLogout = async () => {
+  await signOut(auth);
+};
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -39,7 +43,10 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerShown: false }}>
         {user ? (
           // User is logged in: show tabs
-          <Stack.Screen name="(tabs)" />
+          <Stack.Screen
+            name="(tabs)"
+            options={{ headerShown: false}}
+          />
         ) : (
           // User is not logged in: show LoginScreen
           <Stack.Screen name="LoginScreen" />
