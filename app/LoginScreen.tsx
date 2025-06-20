@@ -46,7 +46,11 @@ export default function LoginScreen({ navigation }: any) {
       />
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <Button title={loading ? "Logging in..." : "Login"} onPress={handleLogin} disabled={loading} />
-      {/* Add a sign up button if you want */}
+      {/* ...your login form... */}
+      <Button
+        title="Sign Up"
+        onPress={() => router.replace('./SignUpScreen')}
+      />
     </View>
   );
 }
