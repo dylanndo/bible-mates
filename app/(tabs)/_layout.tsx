@@ -1,6 +1,6 @@
 import { Tabs, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Button, Platform, Text } from 'react-native';
+import { Platform, Text, TouchableOpacity } from 'react-native';
 
 import { HapticTab } from '@/components/HapticTab';
 import { IconSymbol } from '@/components/ui/IconSymbol';
@@ -36,10 +36,9 @@ export default function TabLayout() {
     fetchFirstName();
   }, []);
 
-  // Logout button
   const logoutButton = () => (
-    <Button
-      title="Logout"
+    <TouchableOpacity
+      style={{ marginRight: 16 }}
       onPress={async () => {
         try {
           await signOut(auth);
@@ -48,12 +47,17 @@ export default function TabLayout() {
           console.error("Logout failed", error);
         }
       }}
-    />
+      activeOpacity={0.6}
+    >
+      <Text style={{ fontWeight: 'bold', fontSize: 16, color: '#007AFF' }}>
+        Logout
+      </Text>
+    </TouchableOpacity>
   );
 
   // Header left: Hi, [first name]!
   const headerLeft = () => (
-    <Text style={{ marginLeft: 16, fontWeight: 'bold' }}>
+    <Text style={{ marginLeft: 16, fontWeight: 'bold', fontSize: 16}}>
       {firstName ? `Hi, ${firstName}!` : ''}
     </Text>
   );
