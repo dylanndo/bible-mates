@@ -1,6 +1,6 @@
 import { Tabs, useRouter } from 'expo-router';
-import React from 'react';
-import { Button, Platform } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Button, Platform, Text } from 'react-native';
 
 import { HapticTab } from '@/components/HapticTab';
 import { IconSymbol } from '@/components/ui/IconSymbol';
@@ -8,29 +8,54 @@ import TabBarBackground from '@/components/ui/TabBarBackground';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
-// Import Firebase signOut and auth
+// Firebase imports
 import { signOut } from 'firebase/auth';
-import { auth } from '../../firebase'; // Adjust path as needed
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../../firebase'; // Make sure db is exported from your firebase.js
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
   const router = useRouter();
+  const [firstName, setFirstName] = useState('');
 
-  // Create a reusable logout button for the header
+  // Fetch first name from Firestore
+  useEffect(() => {
+    const fetchFirstName = async () => {
+      if (auth.currentUser) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+          if (userDoc.exists()) {
+            setFirstName(userDoc.data().firstName);
+          }
+        } catch (e) {
+          // Optionally handle error
+          setFirstName('');
+        }
+      }
+    };
+    fetchFirstName();
+  }, []);
+
+  // Logout button
   const logoutButton = () => (
     <Button
       title="Logout"
       onPress={async () => {
-      console.log("Logout button pressed");
         try {
           await signOut(auth);
-          console.log("Sign out complete");
           router.replace('/LoginScreen');
         } catch (error) {
           console.error("Logout failed", error);
         }
       }}
     />
+  );
+
+  // Header left: Hi, [first name]!
+  const headerLeft = () => (
+    <Text style={{ marginLeft: 16, fontWeight: 'bold' }}>
+      {firstName ? `Hi, ${firstName}!` : ''}
+    </Text>
   );
 
   return (
@@ -40,14 +65,12 @@ export default function TabLayout() {
         tabBarButton: HapticTab,
         tabBarBackground: TabBarBackground,
         tabBarStyle: Platform.select({
-          ios: {
-            // Use a transparent background on iOS to show the blur effect
-            position: 'absolute',
-          },
+          ios: { position: 'absolute' },
           default: {},
         }),
-        headerRight: logoutButton,    // Add this line to show logout on all tabs
-        headerShown: true,            // Show the header so Logout appears
+        headerLeft,           // <-- Add this line
+        headerRight: logoutButton,
+        headerShown: true,
       }}
     >
       <Tabs.Screen
