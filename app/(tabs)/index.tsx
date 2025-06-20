@@ -1,4 +1,5 @@
 import { Image } from 'expo-image';
+import React from 'react';
 import { Platform, StyleSheet } from 'react-native';
 
 import { HelloWave } from '@/components/HelloWave';
@@ -6,7 +7,15 @@ import ParallaxScrollView from '@/components/ParallaxScrollView';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 
+import { Redirect } from 'expo-router';
+import { auth } from '../../firebase'; // adjust path as needed
+
 export default function HomeScreen() {
+  // Redirect to login if not authenticated
+  if (!auth.currentUser) {
+    return <Redirect href="/LoginScreen" />;
+  }
+
   return (
     <ParallaxScrollView
       headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}

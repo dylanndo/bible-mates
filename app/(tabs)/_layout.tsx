@@ -1,6 +1,6 @@
-import { Tabs } from 'expo-router';
-import React from 'react';
-import { Platform } from 'react-native';
+import { Tabs, useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { Platform, Text, TouchableOpacity } from 'react-native';
 
 import { HapticTab } from '@/components/HapticTab';
 import { IconSymbol } from '@/components/ui/IconSymbol';
@@ -8,24 +8,75 @@ import TabBarBackground from '@/components/ui/TabBarBackground';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
+// Firebase imports
+import { signOut } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../../firebase'; // Make sure db is exported from your firebase.js
+
 export default function TabLayout() {
   const colorScheme = useColorScheme();
+  const router = useRouter();
+  const [firstName, setFirstName] = useState('');
+
+  // Fetch first name from Firestore
+  useEffect(() => {
+    const fetchFirstName = async () => {
+      if (auth.currentUser) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+          if (userDoc.exists()) {
+            setFirstName(userDoc.data().firstName);
+          }
+        } catch (e) {
+          // Optionally handle error
+          setFirstName('');
+        }
+      }
+    };
+    fetchFirstName();
+  }, []);
+
+  const logoutButton = () => (
+    <TouchableOpacity
+      style={{ marginRight: 16 }}
+      onPress={async () => {
+        try {
+          await signOut(auth);
+          router.replace('/LoginScreen');
+        } catch (error) {
+          console.error("Logout failed", error);
+        }
+      }}
+      activeOpacity={0.6}
+    >
+      <Text style={{ fontWeight: 'bold', fontSize: 16, color: '#007AFF' }}>
+        Logout
+      </Text>
+    </TouchableOpacity>
+  );
+
+  // Header left: Hi, [first name]!
+  const headerLeft = () => (
+    <Text style={{ marginLeft: 16, fontWeight: 'bold', fontSize: 16}}>
+      {firstName ? `Hi, ${firstName}!` : ''}
+    </Text>
+  );
 
   return (
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        headerShown: false,
         tabBarButton: HapticTab,
         tabBarBackground: TabBarBackground,
         tabBarStyle: Platform.select({
-          ios: {
-            // Use a transparent background on iOS to show the blur effect
-            position: 'absolute',
-          },
+          ios: { position: 'absolute' },
           default: {},
         }),
-      }}>
+        headerLeft,           // <-- Add this line
+        headerRight: logoutButton,
+        headerShown: true,
+      }}
+    >
       <Tabs.Screen
         name="index"
         options={{
