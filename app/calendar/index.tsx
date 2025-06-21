@@ -1,29 +1,10 @@
 import { useRouter } from 'expo-router';
 import { signOut } from 'firebase/auth';
 import React, { useState } from 'react';
-import { Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import CalendarHeader from '../../components/Calendar/CalendarHeader';
 import MonthView, { CalendarEvent } from '../../components/Calendar/MonthView';
 import { auth } from '../../firebase'; // Make sure db is exported from your firebase.js
-
-
-const SCREEN_WIDTH = Dimensions.get('window').width;
-
-// Helper to get month/year with offset
-function getMonthYearOffset(month: number, year: number, offset: number) {
-  let newMonth = month + offset;
-  let newYear = year;
-  while (newMonth < 0) {
-    newMonth += 12;
-    newYear -= 1;
-  }
-  while (newMonth > 11) {
-    newMonth -= 12;
-    newYear += 1;
-  }
-  return { month: newMonth, year: newYear };
-}
 
 const events: CalendarEvent[] = [
   {
