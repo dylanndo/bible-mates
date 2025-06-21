@@ -25,7 +25,6 @@ export default function CalendarHeader({ month, year, onChangeMonthYear, onLogou
   const displayMonth = `${monthNames[month]} ${year}`;
 
   const handleOpen = () => {
-    console.log("yay")
     setSelectedMonth(month);
     setSelectedYear(year);
     setModalVisible(true);
