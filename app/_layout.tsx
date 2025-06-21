@@ -43,10 +43,7 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerShown: false }}>
         {user ? (
           // User is logged in: show tabs
-          <Stack.Screen
-            name="(tabs)"
-            options={{ headerShown: false}}
-          />
+          <Stack.Screen name="calendar/index" options={{ headerShown: false }} />
         ) : (
           // User is not logged in: show LoginScreen
           <Stack.Screen name="LoginScreen" />

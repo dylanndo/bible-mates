@@ -33,7 +33,7 @@ export default function SignUpScreen() {
       email: email,
       createdAt: new Date()
     });
-      router.replace('/(tabs)');
+      router.replace('./calendar');
     } catch (e) {
       setError(e.message);
     }
