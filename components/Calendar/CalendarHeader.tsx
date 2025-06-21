@@ -5,7 +5,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 type CalendarHeaderProps = {
   month: number; // 0-indexed (0 = January)
   year: number;
-  // You can add handlers for dropdown or hamburger here later
+  onLogout?: () => void;  
 };
 
 const monthNames = [
@@ -13,7 +13,7 @@ const monthNames = [
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
-export default function CalendarHeader({ month, year }: CalendarHeaderProps) {
+export default function CalendarHeader({ month, year, onLogout }: CalendarHeaderProps) {
   const displayMonth = `${monthNames[month]} ${year}`;
 
   return (
@@ -30,7 +30,10 @@ export default function CalendarHeader({ month, year }: CalendarHeaderProps) {
       </TouchableOpacity>
 
       {/* Right side reserved for future icons */}
-      <View style={{ width: 40 }} /> {/* Placeholder for symmetry */}
+      <TouchableOpacity style={styles.iconButton} onPress={onLogout}>
+        <Feather name="log-out" size={24} color="#222" />
+      </TouchableOpacity>
+
     </View>
   );
 }

@@ -1,8 +1,12 @@
+import { useRouter } from 'expo-router';
+import { signOut } from 'firebase/auth';
 import React, { useState } from 'react';
 import { Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import CalendarHeader from '../../components/Calendar/CalendarHeader';
 import MonthView, { CalendarEvent } from '../../components/Calendar/MonthView';
+import { auth } from '../../firebase'; // Make sure db is exported from your firebase.js
+
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
@@ -77,12 +81,22 @@ export default function CalendarScreen() {
   const [selectedMonth, setSelectedMonth] = useState(today.getMonth()); // June (0-indexed)
   const [selectedYear, setSelectedYear] = useState(today.getFullYear());
   const [selectedDay, setSelectedDay] = useState(today.getDate())
+  const router = useRouter();
+
+  const handleLogout = () => {
+    // Your logout logic here (e.g., signOut, then redirect)
+    // signOut();
+    // router.replace('/login');
+    signOut(auth);
+    router.replace('/LoginScreen');
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }} edges={['top']}>
         <CalendarHeader
             month={selectedMonth}
             year={selectedYear}
+            onLogout={handleLogout}
             // Add props for switching months or views if needed
         />
         <MonthView events={events} month={selectedMonth} day={selectedDay} year={selectedYear} />
