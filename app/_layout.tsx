@@ -1,5 +1,5 @@
+import { Roboto_400Regular, Roboto_500Medium, Roboto_700Bold, useFonts } from '@expo-google-fonts/roboto';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useState } from 'react';
@@ -18,7 +18,9 @@ const handleLogout = async () => {
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const [loaded] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
+    Roboto_400Regular,
+    Roboto_500Medium,
+    Roboto_700Bold,
   });
 
   // Auth state
@@ -43,10 +45,7 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerShown: false }}>
         {user ? (
           // User is logged in: show tabs
-          <Stack.Screen
-            name="(tabs)"
-            options={{ headerShown: false}}
-          />
+          <Stack.Screen name="calendar/index" options={{ headerShown: false }} />
         ) : (
           // User is not logged in: show LoginScreen
           <Stack.Screen name="LoginScreen" />

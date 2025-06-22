@@ -18,7 +18,7 @@ export default function LoginScreen({ navigation }: any) {
       await signInWithEmailAndPassword(auth, email, password);
       // Navigation will be handled by an auth listener (see below)
       // Navigate to HomeScreen after successful login
-      router.replace('/'); // This will load your root/home/tabs screen
+      router.replace('/calendar'); // This will load your root/home/tabs screen
     } catch (err: any) {
       setError(err.message);
     } finally {
