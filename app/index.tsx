@@ -9,28 +9,15 @@ import MonthView, { CalendarEvent } from '../components/Calendar/MonthView';
 import { useAuth } from '../contexts/AuthContext'; // Necessary for user info
 import { Reading } from '../types';
 
-// Updated to use the new data structure and with unique IDs
-const events: CalendarEvent[] = [
-  { id: '1', firstName: 'Dylan', book: 'Genesis', chapter: '1', notes: 'Powerful start!', date: '2025-06-20' },
-  { id: '2', firstName: 'Nate', book: 'Psalm', chapter: '23', date: '2025-06-02' },
-  { id: '3', firstName: 'Christy', book: 'Matthew', chapter: '5', notes: 'Beatitudes.', date: '2025-06-05' },
-  { id: '4', firstName: 'Tov', book: 'Matthew', chapter: '5', notes: 'Beatitudes.', date: '2025-06-05' },
-  { id: '5', firstName: 'Dylan', book: 'John', chapter: '1', date: '2025-06-05' },
-  { id: '6', firstName: 'Nate', book: 'Proverbs', chapter: '3', date: '2025-06-05' },
-];
-
 export default function CalendarScreen() {
-  // Your original state management is preserved
-  const today = new Date();
-  const [selectedMonth, setSelectedMonth] = useState(today.getMonth());
-  const [selectedYear, setSelectedYear] = useState(today.getFullYear());
-  const [selectedDay, setSelectedDay] = useState(today.getDate())
-  
+  const [date, setDate] = useState(new Date());
+
   // State needed for the new feature
   const { user, signOut } = useAuth();
   const router = useRouter();
   const [eventList, setEventList] = useState<CalendarEvent[]>([]);
-  const [isLoading, setIsLoading] = useState(true);  const [modalVisible, setModalVisible] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);  
+  const [modalVisible, setModalVisible] = useState(false);
   const [book, setBook] = useState('');
   const [chapter, setChapter] = useState('');
   const [notes, setNotes] = useState('');
@@ -38,19 +25,22 @@ export default function CalendarScreen() {
   const [logDate, setLogDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
 
-  // This hook will run when the component mounts and whenever the selected month or year changes.
   useEffect(() => {
     const fetchReadings = async () => {
       setIsLoading(true);
-      // Fetch readings for the currently selected month and year
-      const readings = await getReadingsForMonth(selectedYear, selectedMonth);
+      // Fetch data based on the full date object
+      const readings = await getReadingsForMonth(date.getFullYear(), date.getMonth());
       setEventList(readings);
       setIsLoading(false);
     };
 
     fetchReadings();
-  }, [selectedMonth, selectedYear]); // Dependencies array ensures this runs when the month/year changes
-  // --- END: NEW useEffect HOOK ---
+  }, [date]);
+
+  const handleDayPress = (date: Date) => {
+    const dateString = date.toISOString().slice(0, 10);
+    router.push(`/day/${dateString}`);
+  };
 
   const handleLogout = async () => {
     await signOut();
@@ -82,9 +72,10 @@ export default function CalendarScreen() {
 
       await addReading(newReading);
       
-      // Update local state to see the change immediately
-      setEventList(prev => [...prev, { ...newReading, id: Math.random().toString() }]);
-      
+      if (logDate.getMonth() === date.getMonth() && logDate.getFullYear() === date.getFullYear()) {
+        setEventList(prev => [...prev, { ...newReading, id: Math.random().toString() }]);
+      }
+
       // Reset form and close modal
       setBook('');
       setChapter('');
@@ -113,12 +104,8 @@ export default function CalendarScreen() {
     // Your original SafeAreaView is preserved
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }} edges={['top']}>
         <CalendarHeader
-            month={selectedMonth}
-            year={selectedYear}
-            onChangeMonthYear={(m, y) => {
-              setSelectedMonth(m);
-              setSelectedYear(y);
-            }}
+            date={date}
+            onDateChange={setDate}
             onLogout={handleLogout}
         />
         {/* Show a loading indicator while fetching data */}
@@ -127,7 +114,13 @@ export default function CalendarScreen() {
                 <ActivityIndicator size="large" color="#1976d2" />
             </View>
         ) : (
-            <MonthView events={eventList} month={selectedMonth} day={selectedDay} year={selectedYear} />
+            <MonthView
+                events={eventList}
+                month={date.getMonth()}
+                day={date.getDate()}
+                year={date.getFullYear()}
+                onDayPress={handleDayPress} 
+            />
         )}
 
         <Pressable style={styles.fab} onPress={() => {
@@ -151,7 +144,6 @@ export default function CalendarScreen() {
                         
                         <View style={styles.datePickerContainer}>
                             <Text style={styles.dateLabel}>Date</Text>
-                            {/* --- START: EDIT --- */}
                             {/* On iOS, we render the picker directly as a button. On Android, we use a Pressable to trigger the dialog. */}
                             {Platform.OS === 'ios' ? (
                                 <DateTimePicker
@@ -181,7 +173,6 @@ export default function CalendarScreen() {
                                 maximumDate={new Date()}
                             />
                         )}
-                        {/* --- END: EDIT --- */}
                         <TextInput style={styles.input} placeholder="Book (e.g., Genesis)" value={book} onChangeText={setBook} />
                         <TextInput style={styles.input} placeholder="Chapter (e.g., 1)" value={chapter} onChangeText={setChapter} keyboardType="numeric" />
                         <TextInput 
@@ -273,10 +264,9 @@ const styles = StyleSheet.create({
         fontWeight: '500',
     },
     datePicker: {
-        marginBottom: Platform.OS === 'ios' ? -20 : 0, // Negative margin to reduce space on iOS
+        marginBottom: Platform.OS === 'ios' ? -20 : 0,
     },
     datePickerIOS: {
-        // This ensures the button-like picker aligns nicely on the right
         justifyContent: 'flex-end',
     },
     loadingContainer: {

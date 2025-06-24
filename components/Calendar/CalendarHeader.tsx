@@ -1,13 +1,13 @@
 import { Feather, MaterialIcons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { FlatList, Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-
 type CalendarHeaderProps = {
-  month: number; // 0-indexed (0 = January)
-  year: number;
-  onChangeMonthYear: (month: number, year: number) => void;
-  onLogout?: () => void; 
+  date: Date;
+  onDateChange: (newDate: Date) => void;
+  onLogout?: () => void;
+  showBackButton?: boolean;
+  onBackPress?: () => void;
 };
 
 const monthNames = [
@@ -15,45 +15,54 @@ const monthNames = [
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
-const years = Array.from({length: 11}, (_, i) => 2025 + i)
+const currentYear = new Date().getFullYear();
+const years = Array.from({length: 11}, (_, i) => currentYear - 5 + i);
 
-export default function CalendarHeader({ month, year, onChangeMonthYear, onLogout }: CalendarHeaderProps) {
+export default function CalendarHeader({
+  date,
+  onDateChange,
+  onLogout,
+  showBackButton = false,
+  onBackPress,
+}: CalendarHeaderProps) {
   const [modalVisible, setModalVisible] = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState(month);
-  const [selectedYear, setSelectedYear] = useState(year);
+  const [selectedMonth, setSelectedMonth] = useState(date.getMonth());
+  const [selectedYear, setSelectedYear] = useState(date.getFullYear());
 
-  const displayMonth = `${monthNames[month]} ${year}`;
+  useEffect(() => {
+    setSelectedMonth(date.getMonth());
+    setSelectedYear(date.getFullYear());
+  }, [date]);
 
-  const handleOpen = () => {
-    setSelectedMonth(month);
-    setSelectedYear(year);
-    setModalVisible(true);
-  };
+  const displayMonth = `${monthNames[date.getMonth()]} ${date.getFullYear()}`;
 
   const handleConfirm = () => {
-    onChangeMonthYear(selectedMonth, selectedYear);
+    const newDate = new Date(selectedYear, selectedMonth, 1);
+    onDateChange(newDate);
     setModalVisible(false);
   };
 
   return (
     <View style={styles.headerContainer}>
-      {/* Hamburger button */}
-      <TouchableOpacity style={styles.iconButton}>
-        <Feather name="menu" size={26} color="#222" />
-      </TouchableOpacity>
+      {showBackButton ? (
+        <TouchableOpacity style={styles.iconButton} onPress={onBackPress}>
+          <Feather name="arrow-left" size={26} color="#222" />
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity style={styles.iconButton}>
+          <Feather name="menu" size={26} color="#222" />
+        </TouchableOpacity>
+      )}
 
-      {/* Month name with dropdown */}
-      <TouchableOpacity style={styles.monthContainer} onPress={handleOpen}>
+      <TouchableOpacity style={styles.monthContainer} onPress={() => setModalVisible(true)}>
         <Text style={styles.monthText}>{displayMonth}</Text>
         <MaterialIcons name="arrow-drop-down" size={24} color="#222" />
       </TouchableOpacity>
 
-      {/* Right side reserved for future icons */}
       <TouchableOpacity style={styles.iconButton} onPress={onLogout}>
         <Feather name="log-out" size={24} color="#222" />
       </TouchableOpacity>
 
-      {/* Modal for Month/Year Picker */}
       <Modal
         transparent
         visible={modalVisible}
@@ -67,16 +76,12 @@ export default function CalendarHeader({ month, year, onChangeMonthYear, onLogou
           <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
             <Text style={styles.modalTitle}>Select Month & Year</Text>
             <View style={styles.pickerRow}>
-              {/* Months */}
               <FlatList
                 data={monthNames}
-                keyExtractor={(item, idx) => idx.toString()}
+                keyExtractor={(item) => item}
                 renderItem={({ item, index }) => (
                   <TouchableOpacity
-                    style={[
-                      styles.pickerItem,
-                      selectedMonth === index && styles.selectedPickerItem,
-                    ]}
+                    style={[styles.pickerItem, selectedMonth === index && styles.selectedPickerItem]}
                     onPress={() => setSelectedMonth(index)}
                   >
                     <Text style={selectedMonth === index ? styles.selectedPickerText : styles.pickerText}>
@@ -85,17 +90,15 @@ export default function CalendarHeader({ month, year, onChangeMonthYear, onLogou
                   </TouchableOpacity>
                 )}
                 style={{ maxHeight: 200 }}
+                initialScrollIndex={selectedMonth}
+                getItemLayout={(data, index) => ({ length: 38, offset: 38 * index, index })}
               />
-              {/* Years */}
               <FlatList
                 data={years}
                 keyExtractor={(item) => item.toString()}
                 renderItem={({ item }) => (
                   <TouchableOpacity
-                    style={[
-                      styles.pickerItem,
-                      selectedYear === item && styles.selectedPickerItem,
-                    ]}
+                    style={[styles.pickerItem, selectedYear === item && styles.selectedPickerItem]}
                     onPress={() => setSelectedYear(item)}
                   >
                     <Text style={selectedYear === item ? styles.selectedPickerText : styles.pickerText}>
@@ -104,6 +107,8 @@ export default function CalendarHeader({ month, year, onChangeMonthYear, onLogou
                   </TouchableOpacity>
                 )}
                 style={{ maxHeight: 200 }}
+                initialScrollIndex={years.indexOf(selectedYear)}
+                getItemLayout={(data, index) => ({ length: 38, offset: 38 * index, index })}
               />
             </View>
             <TouchableOpacity style={styles.confirmButton} onPress={handleConfirm}>
@@ -117,84 +122,18 @@ export default function CalendarHeader({ month, year, onChangeMonthYear, onLogou
 }
 
 const styles = StyleSheet.create({
-  headerContainer: {
-    height: 45,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    elevation: 2,
-    paddingHorizontal: 8,
-    borderBottomWidth: 1,
-    borderColor: '#eee',
-  },
-  iconButton: {
-    padding: 8,
-    marginRight: 8,
-  },
-  monthContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    justifyContent: 'center',
-  },
-  monthText: {
-    fontSize: 20,
-    fontWeight: '500',
-    color: '#222',
-    marginRight: 2,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 16,
-    width: 320,
-    alignItems: 'center',
-    minHeight: 300,
-    zIndex: 100,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 12,
-  },
-  pickerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-  },
-  pickerItem: {
-    padding: 8,
-    margin: 2,
-    borderRadius: 4,
-  },
-  selectedPickerItem: {
-    backgroundColor: '#1976d2',
-  },
-  pickerText: {
-    fontSize: 16,
-    color: '#222',
-  },
-  selectedPickerText: {
-    fontSize: 16,
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-  confirmButton: {
-    marginTop: 14,
-    backgroundColor: '#1976d2',
-    borderRadius: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 24,
-  },
-  confirmButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
+  headerContainer: { height: 45, flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', paddingHorizontal: 8, borderBottomWidth: 1, borderColor: '#eee' },
+  iconButton: { padding: 8 },
+  monthContainer: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'center' },
+  monthText: { fontSize: 20, fontWeight: '500', color: '#222' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: { backgroundColor: '#fff', borderRadius: 8, padding: 16, width: 320 },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 12, textAlign: 'center' },
+  pickerRow: { flexDirection: 'row', justifyContent: 'space-around', width: '100%' },
+  pickerItem: { paddingVertical: 8, paddingHorizontal: 16, margin: 2, borderRadius: 4 },
+  selectedPickerItem: { backgroundColor: '#1976d2' },
+  pickerText: { fontSize: 16, color: '#222' },
+  selectedPickerText: { fontSize: 16, color: '#fff', fontWeight: 'bold' },
+  confirmButton: { marginTop: 14, backgroundColor: '#1976d2', borderRadius: 6, paddingVertical: 10, paddingHorizontal: 24, alignSelf: 'center' },
+  confirmButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
 });
