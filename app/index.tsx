@@ -106,28 +106,30 @@ export default function CalendarScreen() {
         >
             <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
                 <View style={styles.modalOverlay}>
-                    {/* This Pressable stops the dismiss action if you tap inside the modal card */}
-                    <Pressable>
-                        <View style={styles.modalView}>
-                            <Text style={{ fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 }}>Log Your Reading</Text>
-                            <TextInput style={styles.input} placeholder="Book (e.g., Genesis)" value={book} onChangeText={setBook} />
-                            <TextInput style={styles.input} placeholder="Chapter (e.g., 1)" value={chapter} onChangeText={setChapter} keyboardType="numeric" />
-                            <TextInput style={styles.input} placeholder="Notes/Reflections" value={notes} onChangeText={setNotes} multiline />
-                            <Button title="Post Reading" onPress={handleAddReading} />
-                            <View style={{ marginTop: 10 }}>
-                                <Button title="Cancel" onPress={() => setModalVisible(false)} color="grey" />
-                            </View>
+                    <View style={styles.modalView}>
+                        <Text style={{ fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 }}>Log Your Reading</Text>
+                        <TextInput style={styles.input} placeholder="Book (e.g., Genesis)" value={book} onChangeText={setBook} />
+                        <TextInput style={styles.input} placeholder="Chapter (e.g., 1)" value={chapter} onChangeText={setChapter} keyboardType="numeric" />
+                        <TextInput 
+                            style={[styles.input, styles.notesInput]} 
+                            placeholder="Notes/Reflections" 
+                            value={notes} 
+                            onChangeText={setNotes} 
+                            multiline
+                            numberOfLines={4} // This prop is mainly a hint for Android
+                        />
+                        <Button title="Post Reading" onPress={handleAddReading} />
+                        <View style={{ marginTop: 10 }}>
+                            <Button title="Cancel" onPress={() => setModalVisible(false)} color="grey" />
                         </View>
-                    </Pressable>
+                    </View>
                 </View>
             </TouchableWithoutFeedback>
         </Modal>
-        {/* --- End: Functional UI Additions --- */}
     </SafeAreaView>
   );
 }
 
-// Minimal styles needed for the new functional elements
 const styles = StyleSheet.create({
     fab: {
         position: 'absolute', 
@@ -165,5 +167,10 @@ const styles = StyleSheet.create({
         padding: 10,
         marginBottom: 15,
         borderRadius: 5,
+    },
+    notesInput: {
+        height: 200, 
+        textAlignVertical: 'top',
+        paddingTop: 10,
     }
 });
