@@ -50,7 +50,11 @@ export default function CalendarScreen() {
 
     fetchReadings();
   }, [selectedMonth, selectedYear]); // Dependencies array ensures this runs when the month/year changes
-  // --- END: NEW useEffect HOOK ---
+
+  const handleDayPress = (date: Date) => {
+    const dateString = date.toISOString().slice(0, 10);
+    router.push(`/day/${dateString}`);
+  };
 
   const handleLogout = async () => {
     await signOut();
@@ -82,9 +86,11 @@ export default function CalendarScreen() {
 
       await addReading(newReading);
       
-      // Update local state to see the change immediately
-      setEventList(prev => [...prev, { ...newReading, id: Math.random().toString() }]);
-      
+      // When adding from the main calendar, we should refetch for the current month
+      if (logDate.getMonth() === selectedMonth && logDate.getFullYear() === selectedYear) {
+        setEventList(prev => [...prev, { ...newReading, id: Math.random().toString() }]);
+      }
+
       // Reset form and close modal
       setBook('');
       setChapter('');
@@ -127,7 +133,7 @@ export default function CalendarScreen() {
                 <ActivityIndicator size="large" color="#1976d2" />
             </View>
         ) : (
-            <MonthView events={eventList} month={selectedMonth} day={selectedDay} year={selectedYear} />
+            <MonthView events={eventList} month={selectedMonth} day={selectedDay} year={selectedYear} onDayPress={handleDayPress}/>
         )}
 
         <Pressable style={styles.fab} onPress={() => {
@@ -151,8 +157,6 @@ export default function CalendarScreen() {
                         
                         <View style={styles.datePickerContainer}>
                             <Text style={styles.dateLabel}>Date</Text>
-                            {/* --- START: EDIT --- */}
-                            {/* On iOS, we render the picker directly as a button. On Android, we use a Pressable to trigger the dialog. */}
                             {Platform.OS === 'ios' ? (
                                 <DateTimePicker
                                     testID="dateTimePicker"
@@ -170,7 +174,6 @@ export default function CalendarScreen() {
                             )}
                         </View>
 
-                        {/* This is now only for Android */}
                         {showDatePicker && Platform.OS === 'android' && (
                             <DateTimePicker
                                 testID="dateTimePicker"
@@ -181,7 +184,6 @@ export default function CalendarScreen() {
                                 maximumDate={new Date()}
                             />
                         )}
-                        {/* --- END: EDIT --- */}
                         <TextInput style={styles.input} placeholder="Book (e.g., Genesis)" value={book} onChangeText={setBook} />
                         <TextInput style={styles.input} placeholder="Chapter (e.g., 1)" value={chapter} onChangeText={setChapter} keyboardType="numeric" />
                         <TextInput 
@@ -273,10 +275,9 @@ const styles = StyleSheet.create({
         fontWeight: '500',
     },
     datePicker: {
-        marginBottom: Platform.OS === 'ios' ? -20 : 0, // Negative margin to reduce space on iOS
+        marginBottom: Platform.OS === 'ios' ? -20 : 0,
     },
     datePickerIOS: {
-        // This ensures the button-like picker aligns nicely on the right
         justifyContent: 'flex-end',
     },
     loadingContainer: {
