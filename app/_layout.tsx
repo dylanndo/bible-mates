@@ -17,9 +17,7 @@ export default function RootLayout() {
         <Stack.Screen 
           name="day/[date]" 
           options={{ 
-            title: "Day View", 
-            headerBackTitle: "Calendar",
-            headerShown: true, // Make sure the header is visible for this screen
+            headerShown: false,
           }} 
         />
       </Stack>

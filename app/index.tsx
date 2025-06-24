@@ -20,17 +20,14 @@ const events: CalendarEvent[] = [
 ];
 
 export default function CalendarScreen() {
-  // Your original state management is preserved
-  const today = new Date();
-  const [selectedMonth, setSelectedMonth] = useState(today.getMonth());
-  const [selectedYear, setSelectedYear] = useState(today.getFullYear());
-  const [selectedDay, setSelectedDay] = useState(today.getDate())
-  
+  const [date, setDate] = useState(new Date());
+
   // State needed for the new feature
   const { user, signOut } = useAuth();
   const router = useRouter();
   const [eventList, setEventList] = useState<CalendarEvent[]>([]);
-  const [isLoading, setIsLoading] = useState(true);  const [modalVisible, setModalVisible] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);  
+  const [modalVisible, setModalVisible] = useState(false);
   const [book, setBook] = useState('');
   const [chapter, setChapter] = useState('');
   const [notes, setNotes] = useState('');
@@ -38,18 +35,17 @@ export default function CalendarScreen() {
   const [logDate, setLogDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
 
-  // This hook will run when the component mounts and whenever the selected month or year changes.
   useEffect(() => {
     const fetchReadings = async () => {
       setIsLoading(true);
-      // Fetch readings for the currently selected month and year
-      const readings = await getReadingsForMonth(selectedYear, selectedMonth);
+      // Fetch data based on the full date object
+      const readings = await getReadingsForMonth(date.getFullYear(), date.getMonth());
       setEventList(readings);
       setIsLoading(false);
     };
 
     fetchReadings();
-  }, [selectedMonth, selectedYear]); // Dependencies array ensures this runs when the month/year changes
+  }, [date]);
 
   const handleDayPress = (date: Date) => {
     const dateString = date.toISOString().slice(0, 10);
@@ -86,8 +82,7 @@ export default function CalendarScreen() {
 
       await addReading(newReading);
       
-      // When adding from the main calendar, we should refetch for the current month
-      if (logDate.getMonth() === selectedMonth && logDate.getFullYear() === selectedYear) {
+      if (logDate.getMonth() === date.getMonth() && logDate.getFullYear() === date.getFullYear()) {
         setEventList(prev => [...prev, { ...newReading, id: Math.random().toString() }]);
       }
 
@@ -119,12 +114,8 @@ export default function CalendarScreen() {
     // Your original SafeAreaView is preserved
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }} edges={['top']}>
         <CalendarHeader
-            month={selectedMonth}
-            year={selectedYear}
-            onChangeMonthYear={(m, y) => {
-              setSelectedMonth(m);
-              setSelectedYear(y);
-            }}
+            date={date}
+            onDateChange={setDate}
             onLogout={handleLogout}
         />
         {/* Show a loading indicator while fetching data */}
@@ -133,7 +124,13 @@ export default function CalendarScreen() {
                 <ActivityIndicator size="large" color="#1976d2" />
             </View>
         ) : (
-            <MonthView events={eventList} month={selectedMonth} day={selectedDay} year={selectedYear} onDayPress={handleDayPress}/>
+            <MonthView
+                events={eventList}
+                month={date.getMonth()}
+                day={date.getDate()}
+                year={date.getFullYear()}
+                onDayPress={handleDayPress} 
+            />
         )}
 
         <Pressable style={styles.fab} onPress={() => {
@@ -157,6 +154,7 @@ export default function CalendarScreen() {
                         
                         <View style={styles.datePickerContainer}>
                             <Text style={styles.dateLabel}>Date</Text>
+                            {/* On iOS, we render the picker directly as a button. On Android, we use a Pressable to trigger the dialog. */}
                             {Platform.OS === 'ios' ? (
                                 <DateTimePicker
                                     testID="dateTimePicker"
@@ -174,6 +172,7 @@ export default function CalendarScreen() {
                             )}
                         </View>
 
+                        {/* This is now only for Android */}
                         {showDatePicker && Platform.OS === 'android' && (
                             <DateTimePicker
                                 testID="dateTimePicker"

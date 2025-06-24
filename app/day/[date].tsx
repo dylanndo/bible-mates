@@ -1,19 +1,23 @@
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Button, Keyboard, Modal, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableWithoutFeedback, View } from 'react-native';
-import { addReading, getReadingsForDate, getUserProfile } from '../../api/firebase'; // We already have this function
+import { addReading, getReadingsForDate, getUserProfile } from '../../api/firebase';
+import CalendarHeader from '../../components/Calendar/CalendarHeader';
 import { CalendarEvent } from '../../components/Calendar/MonthView';
 import { useAuth } from '../../contexts/AuthContext';
 import { Reading } from '../../types';
 
+const daysOfWeek = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+
 export default function DayViewScreen() {
-    // Get the date from the URL parameter
     const { date } = useLocalSearchParams<{ date: string }>();
+    const router = useRouter();
+    
+    const [viewedDate, setViewedDate] = useState<Date | null>(null);
     const [readings, setReadings] = useState<CalendarEvent[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-
-    // Logic for the FAB and Modal
+    
     const [modalVisible, setModalVisible] = useState(false);
     const [book, setBook] = useState('');
     const [chapter, setChapter] = useState('');
@@ -24,25 +28,22 @@ export default function DayViewScreen() {
 
     useEffect(() => {
         if (date) {
-            const fetchReadings = async () => {
+            const fetchAndSetData = async () => {
                 setIsLoading(true);
+                const initialDate = new Date(date + 'T00:00:00');
+                setViewedDate(initialDate);
+                
                 const fetchedReadings = await getReadingsForDate(date);
                 setReadings(fetchedReadings);
                 setIsLoading(false);
             };
-            fetchReadings();
+            fetchAndSetData();
         }
-    }, [date]); // Re-fetch if the date changes
+    }, [date]);
 
     const handleAddReading = async () => {
-        if (!book || !chapter) {
-            Alert.alert('Missing Info', 'Please provide a book and chapter.');
-            return;
-        }
-        if (!user) {
-            Alert.alert('Not Logged In', 'You must be logged in to post a reading.');
-            return;
-        }
+        if (!book || !chapter) { Alert.alert('Missing Info', 'Please provide a book and chapter.'); return; }
+        if (!user) { Alert.alert('Not Logged In', 'You must be logged in to post a reading.'); return; }
         try {
             const userProfile = await getUserProfile(user.uid);
             if (!userProfile) throw new Error('Could not find user profile.');
@@ -50,8 +51,7 @@ export default function DayViewScreen() {
                 userId: user.uid, firstName: userProfile.firstName, book, chapter, notes, date: logDate.toISOString().slice(0, 10),
             };
             await addReading(newReading);
-            // If the user adds a reading for the currently viewed day, update the list
-            if (logDate.toISOString().slice(0, 10) === date) {
+            if (viewedDate && logDate.toISOString().slice(0, 10) === viewedDate.toISOString().slice(0, 10)) {
                 setReadings(prev => [...prev, { ...newReading, id: Math.random().toString() }]);
             }
             setBook(''); setChapter(''); setNotes(''); setModalVisible(false);
@@ -69,31 +69,54 @@ export default function DayViewScreen() {
         setLogDate(new Date()); setShowDatePicker(false); setModalVisible(true);
     };
 
-    if (isLoading) {
-        return <View style={styles.loadingContainer}><ActivityIndicator size="large" /></View>;
+    if (!viewedDate) {
+        return <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#1976d2" /></View>;
     }
+    
+    const handleDateChangeInHeader = (newDate: Date) => {
+        const newDateString = newDate.toISOString().slice(0, 10);
+        router.replace(`/day/${newDateString}`);
+    };
+
+    const isToday = new Date().toDateString() === viewedDate.toDateString();
 
     return (
         <SafeAreaView style={styles.container}>
-            {/* Functional, un-styled version of the header and content */}
-            <Text style={styles.headerText}>Readings for {date}</Text>
-            
-            <ScrollView style={styles.contentContainer}>
-                {readings.length > 0 ? (
+            <CalendarHeader
+                date={viewedDate}
+                onDateChange={handleDateChangeInHeader}
+                showBackButton={true}
+                onBackPress={() => router.back()}
+            />
+
+            <View style={styles.dayHeader}>
+                <Text style={styles.dayNameText}>{daysOfWeek[viewedDate.getDay()]}</Text>
+                <View style={isToday ? styles.todayCircle : styles.dateCircle}>
+                    <Text style={isToday ? styles.todayDateText : styles.dateText}>{viewedDate.getDate()}</Text>
+                </View>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.scrollContentContainer}>
+                {isLoading ? (
+                    <ActivityIndicator size="large" color="#1976d2" style={{ marginTop: 50 }} />
+                ) : readings.length > 0 ? (
                     readings.map(reading => (
-                        <View key={reading.id} style={styles.eventBlock}>
-                            <Text>{reading.firstName}: {reading.book} {reading.chapter}</Text>
+                        <View key={reading.id} style={[styles.eventBlock, { minHeight: 80, flex: 1/Math.max(4, readings.length) }]}>
+                            <Text style={styles.eventTextName}>{reading.firstName}</Text>
+                            <Text style={styles.eventTextReading}>{reading.book} {reading.chapter}</Text>
                         </View>
                     ))
                 ) : (
-                    <Text>No readings for this day.</Text>
+                    <View style={styles.noEventsContainer}>
+                        <Text style={styles.noEventsText}>No readings for this day.</Text>
+                    </View>
                 )}
             </ScrollView>
 
-            {/* --- Reused FAB and Modal --- */}
             <Pressable style={styles.fab} onPress={openModal}>
                 <Text style={styles.fabIcon}>+</Text>
             </Pressable>
+            
             <Modal visible={modalVisible} onRequestClose={() => setModalVisible(false)} animationType="slide" transparent={true}>
                 <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
                     <View style={styles.modalOverlay}>
@@ -126,9 +149,18 @@ export default function DayViewScreen() {
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#fff' },
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    headerText: { fontSize: 24, fontWeight: 'bold', padding: 16 },
-    contentContainer: { flex: 1, paddingHorizontal: 16 },
-    eventBlock: { padding: 10, borderBottomWidth: 1, borderColor: '#eee' },
+    dayHeader: { paddingVertical: 10, alignItems: 'center', borderBottomWidth: 1, borderColor: '#eee' },
+    dayNameText: { fontSize: 14, fontWeight: '500', color: '#666', marginBottom: 8 },
+    dateCircle: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
+    todayCircle: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1976d2' },
+    dateText: { fontSize: 22, fontWeight: 'bold', color: '#333' },
+    todayDateText: { fontSize: 22, fontWeight: 'bold', color: '#fff' },
+    scrollContentContainer: { flexGrow: 1, padding: 8 },
+    eventBlock: { backgroundColor: '#e3f2fd', margin: 4, padding: 12, borderRadius: 8, justifyContent: 'center' },
+    eventTextName: { fontSize: 16, fontWeight: 'bold', color: '#0d47a1' },
+    eventTextReading: { fontSize: 14, color: '#1565c0', marginTop: 4 },
+    noEventsContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 50 },
+    noEventsText: { fontSize: 16, color: '#888' },
     fab: { position: 'absolute', right: 25, bottom: 25, width: 60, height: 60, borderRadius: 30, backgroundColor: '#1976d2', justifyContent: 'center', alignItems: 'center', elevation: 8 },
     fabIcon: { fontSize: 30, color: 'white', lineHeight: 32 },
     modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
