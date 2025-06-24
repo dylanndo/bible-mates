@@ -1,6 +1,7 @@
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, Button, Keyboard, Modal, Pressable, StyleSheet, Text, TextInput, TouchableWithoutFeedback, View } from 'react-native';
+import { Alert, Button, Keyboard, Modal, Platform, Pressable, StyleSheet, Text, TextInput, TouchableWithoutFeedback, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { addReading, getUserProfile } from '../api/firebase';
 import CalendarHeader from '../components/Calendar/CalendarHeader';
@@ -34,6 +35,10 @@ export default function CalendarScreen() {
   const [chapter, setChapter] = useState('');
   const [notes, setNotes] = useState('');
 
+  const [logDate, setLogDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
+
   const handleLogout = async () => {
     await signOut();
     router.replace('/LoginScreen');
@@ -59,7 +64,7 @@ export default function CalendarScreen() {
         book,
         chapter,
         notes,
-        date: new Date().toISOString().slice(0, 10),
+        date: logDate.toISOString().slice(0, 10),
       };
 
       await addReading(newReading);
@@ -79,6 +84,18 @@ export default function CalendarScreen() {
     }
   };
 
+  const onChangeDate = (event: DateTimePickerEvent, selectedDate?: Date) => {
+    // For Android, we need to hide the picker manually
+    if (Platform.OS === 'android') {
+        setShowDatePicker(false);
+    }
+    // event.type === 'set' means the user picked a date.
+    // 'dismissed' means they cancelled.
+    if (event.type === 'set' && selectedDate) {
+      setLogDate(selectedDate);
+    }
+  };
+
   return (
     // Your original SafeAreaView is preserved
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }} edges={['top']}>
@@ -93,8 +110,11 @@ export default function CalendarScreen() {
         />
         <MonthView events={eventList} month={selectedMonth} day={selectedDay} year={selectedYear} />
 
-        {/* --- Start: Functional UI Additions --- */}
-        <Pressable style={styles.fab} onPress={() => setModalVisible(true)}>
+        <Pressable style={styles.fab} onPress={() => {
+            // Reset the log date to today every time the modal is opened
+            setLogDate(new Date());
+            setModalVisible(true);
+        }}>
             <Text style={styles.fabIcon}>+</Text>
         </Pressable>
 
@@ -104,10 +124,44 @@ export default function CalendarScreen() {
             animationType="slide"
             transparent={true}
         >
-            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalView}>
-                        <Text style={{ fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 }}>Log Your Reading</Text>
+                        <Text style={styles.modalTitle}>Log Your Reading</Text>
+                        
+                        <View style={styles.datePickerContainer}>
+                            <Text style={styles.dateLabel}>Date</Text>
+                            {/* --- START: EDIT --- */}
+                            {/* On iOS, we render the picker directly as a button. On Android, we use a Pressable to trigger the dialog. */}
+                            {Platform.OS === 'ios' ? (
+                                <DateTimePicker
+                                    testID="dateTimePicker"
+                                    value={logDate}
+                                    mode="date"
+                                    display="compact" // This style renders as a tappable gray button on iOS
+                                    onChange={onChangeDate}
+                                    maximumDate={new Date()}
+                                    style={styles.datePickerIOS}
+                                />
+                            ) : (
+                                <Pressable onPress={() => setShowDatePicker(true)} style={styles.datePickerButton}>
+                                    <Text style={styles.datePickerButtonText}>{logDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}</Text>
+                                </Pressable>
+                            )}
+                        </View>
+
+                        {/* This is now only for Android */}
+                        {showDatePicker && Platform.OS === 'android' && (
+                            <DateTimePicker
+                                testID="dateTimePicker"
+                                value={logDate}
+                                mode="date"
+                                display="default"
+                                onChange={onChangeDate}
+                                maximumDate={new Date()}
+                            />
+                        )}
+                        {/* --- END: EDIT --- */}
                         <TextInput style={styles.input} placeholder="Book (e.g., Genesis)" value={book} onChangeText={setBook} />
                         <TextInput style={styles.input} placeholder="Chapter (e.g., 1)" value={chapter} onChangeText={setChapter} keyboardType="numeric" />
                         <TextInput 
@@ -116,7 +170,7 @@ export default function CalendarScreen() {
                             value={notes} 
                             onChangeText={setNotes} 
                             multiline
-                            numberOfLines={4} // This prop is mainly a hint for Android
+                            numberOfLines={4}
                         />
                         <Button title="Post Reading" onPress={handleAddReading} />
                         <View style={{ marginTop: 10 }}>
@@ -161,6 +215,12 @@ const styles = StyleSheet.create({
         padding: 20,
         elevation: 5,
     },
+    modalTitle: {
+      fontSize: 20,
+      fontWeight: 'bold',
+      textAlign: 'center',
+      marginBottom: 20
+    },
     input: {
         borderWidth: 1,
         borderColor: '#ddd',
@@ -169,8 +229,34 @@ const styles = StyleSheet.create({
         borderRadius: 5,
     },
     notesInput: {
-        height: 200, 
-        textAlignVertical: 'top',
-        paddingTop: 10,
-    }
+        height: 80, textAlignVertical: 'top', paddingTop: 10,
+    },
+    datePickerContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 15,
+    },
+    dateLabel: {
+        fontSize: 16,
+        color: '#333',
+    },
+    datePickerButton: {
+        backgroundColor: '#f0f0f0',
+        paddingVertical: 10,
+        paddingHorizontal: 15,
+        borderRadius: 5,
+    },
+    datePickerButtonText: {
+        fontSize: 16,
+        color: '#1976d2',
+        fontWeight: '500',
+    },
+    datePicker: {
+        marginBottom: Platform.OS === 'ios' ? -20 : 0, // Negative margin to reduce space on iOS
+    },
+    datePickerIOS: {
+        // This ensures the button-like picker aligns nicely on the right
+        justifyContent: 'flex-end',
+    },
 });
