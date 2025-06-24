@@ -9,7 +9,7 @@ export default function RootLayout() {
   return (
     // Wrap the entire app in the AuthProvider
     <AuthProvider>
-      <Stack>
+      <Stack screenOptions={{animation: 'fade'}}>
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="LoginScreen" options={{ headerShown: false }} />
         <Stack.Screen name="SignUpScreen" options={{ headerShown: false }} />
