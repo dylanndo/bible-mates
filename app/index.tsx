@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, Button, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Button, Keyboard, Modal, Pressable, StyleSheet, Text, TextInput, TouchableWithoutFeedback, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { addReading, getUserProfile } from '../api/firebase';
 import CalendarHeader from '../components/Calendar/CalendarHeader';
@@ -104,18 +104,23 @@ export default function CalendarScreen() {
             animationType="slide"
             transparent={true}
         >
-            <View style={styles.modalOverlay}>
-                <View style={styles.modalView}>
-                    <Text style={{ fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 }}>Log Your Reading</Text>
-                    <TextInput style={styles.input} placeholder="Book (e.g., Genesis)" value={book} onChangeText={setBook} />
-                    <TextInput style={styles.input} placeholder="Chapter (e.g., 1)" value={chapter} onChangeText={setChapter} keyboardType="numeric" />
-                    <TextInput style={styles.input} placeholder="Notes/Reflections" value={notes} onChangeText={setNotes} multiline />
-                    <Button title="Post Reading" onPress={handleAddReading} />
-                    <View style={{ marginTop: 10 }}>
-                        <Button title="Cancel" onPress={() => setModalVisible(false)} color="grey" />
-                    </View>
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                <View style={styles.modalOverlay}>
+                    {/* This Pressable stops the dismiss action if you tap inside the modal card */}
+                    <Pressable>
+                        <View style={styles.modalView}>
+                            <Text style={{ fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 }}>Log Your Reading</Text>
+                            <TextInput style={styles.input} placeholder="Book (e.g., Genesis)" value={book} onChangeText={setBook} />
+                            <TextInput style={styles.input} placeholder="Chapter (e.g., 1)" value={chapter} onChangeText={setChapter} keyboardType="numeric" />
+                            <TextInput style={styles.input} placeholder="Notes/Reflections" value={notes} onChangeText={setNotes} multiline />
+                            <Button title="Post Reading" onPress={handleAddReading} />
+                            <View style={{ marginTop: 10 }}>
+                                <Button title="Cancel" onPress={() => setModalVisible(false)} color="grey" />
+                            </View>
+                        </View>
+                    </Pressable>
                 </View>
-            </View>
+            </TouchableWithoutFeedback>
         </Modal>
         {/* --- End: Functional UI Additions --- */}
     </SafeAreaView>
