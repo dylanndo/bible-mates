@@ -1,5 +1,5 @@
 import React from 'react';
-import { Dimensions, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
 
 export type CalendarEvent = {
   id: string;
@@ -15,6 +15,7 @@ type MonthViewProps = {
   month: number;
   day: number;
   year: number;
+  onDayPress: (date: Date) => void;
 };
 
 const daysOfWeek = [
@@ -49,7 +50,7 @@ function getNextMonthDays(year: number, month: number, count: number) {
   return days;
 }
 
-export default function MonthView({ events = [], month, day, year, }: MonthViewProps) {
+export default function MonthView({ events = [], month, day, year, onDayPress }: MonthViewProps) {
   const days = getMonthDays(year, month);
   const firstDayOfWeek = days[0].getDay();
   const prevMonthDays = getPrevMonthDays(year, month, firstDayOfWeek);
@@ -110,9 +111,10 @@ export default function MonthView({ events = [], month, day, year, }: MonthViewP
               const extraCount = dayEvents.length - maxEventsToShow;
 
               return (
-                <View
-                  key={dIdx}
+                <Pressable
+                  key={date.toISOString()}
                   style={[styles.dayCell, { height: cellHeight }]}
+                  onPress={() => onDayPress(date)}
                 >
                   <View style={styles.dateNumberWrapper}>
                     {isToday && isCurrentMonth ? (
@@ -138,7 +140,7 @@ export default function MonthView({ events = [], month, day, year, }: MonthViewP
                   {extraCount > 0 && (
                     <Text style={styles.ellipsis}>...</Text>
                   )}
-                </View>
+                </Pressable>
               );
             })}
           </View>
@@ -161,12 +163,12 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
     fontSize: 12,
-    fontWeight: 600,
+    fontWeight: '600',
     lineHeight: 40,
     color: '#666',
   },
   currentDayOfWeekHeader: {
-  color: '#1976d2',      // Google Calendar blue for today’s day of week
+  color: '#1976d2',
   },
   grid: { flex: 1 },
   weekRow: { flexDirection: 'row', flex: 1 },
@@ -186,7 +188,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   todayCircle: {
-    backgroundColor: '#1976d2', // Google Calendar blue
+    backgroundColor: '#1976d2',
     borderRadius: 16,
     width: 22,
     height: 22,
@@ -197,10 +199,10 @@ const styles = StyleSheet.create({
   todayText: {
     color: '#fff',
     fontSize: 12,
-    fontWeight: 600,
+    fontWeight: '600',
   },
   dateText: {
-    fontWeight: 600,
+    fontWeight: '600',
     fontSize: 12,
     textAlign: 'center',
     width: 22,
@@ -210,7 +212,7 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   outOfMonthDateText: {
-    color: '#bbb', // adjust this gray as desired
+    color: '#bbb',
   },
   eventBlock: {
     backgroundColor: '#ADD8E6',
