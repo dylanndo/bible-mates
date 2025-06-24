@@ -4,7 +4,8 @@ import { Dimensions, StyleSheet, Text, View } from 'react-native';
 export type CalendarEvent = {
   id: string;
   firstName: string;
-  reading: string;
+  book: string;
+  chapter: string;
   notes?: string;
   date: string; // 'YYYY-MM-DD'
 };
@@ -20,7 +21,6 @@ const daysOfWeek = [
   'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
 ];
 
-// Helper to get all days in a month
 function getMonthDays(year: number, month: number) {
   const numDays = new Date(year, month + 1, 0).getDate();
   const days = [];
@@ -29,7 +29,6 @@ function getMonthDays(year: number, month: number) {
   }
   return days;
 }
-
 function getPrevMonthDays(year: number, month: number, count: number) {
   const prevMonth = month === 0 ? 11 : month - 1;
   const prevYear = month === 0 ? year - 1 : year;
@@ -40,7 +39,6 @@ function getPrevMonthDays(year: number, month: number, count: number) {
   }
   return days;
 }
-
 function getNextMonthDays(year: number, month: number, count: number) {
   const nextMonth = month === 11 ? 0 : month + 1;
   const nextYear = month === 11 ? year + 1 : year;
@@ -53,29 +51,18 @@ function getNextMonthDays(year: number, month: number, count: number) {
 
 export default function MonthView({ events = [], month, day, year, }: MonthViewProps) {
   const days = getMonthDays(year, month);
-  const firstDayOfWeek = days[0].getDay(); // 0 = Sunday
-
-  // NEW: Fill leading days with previous month's days ===
+  const firstDayOfWeek = days[0].getDay();
   const prevMonthDays = getPrevMonthDays(year, month, firstDayOfWeek);
-
-  // NEW: Build the full array for the calendar grid ===
-  // Start with prevMonthDays, then current month, then nextMonthDays
   let calendarCells = [...prevMonthDays, ...days];
-
-  // NEW: Fill trailing days with next month's days to make 6 rows ===
-  const totalCells = 6 * 7; // 6 rows, 7 days each
+  const totalCells = 6 * 7;
   const nextMonthDayCount = totalCells - calendarCells.length;
   const nextMonthDays = getNextMonthDays(year, month, nextMonthDayCount);
   calendarCells = [...calendarCells, ...nextMonthDays];
-
-  // Mark which days are in/out of the current month ===
   const cellTypes = [
     ...Array(prevMonthDays.length).fill('prev'),
     ...Array(days.length).fill('current'),
     ...Array(nextMonthDays.length).fill('next'),
   ];
-
-  // Chunk cells into 6 weeks
   const weeks = [];
   for (let i = 0; i < 6; i++) {
     weeks.push({
@@ -83,14 +70,10 @@ export default function MonthView({ events = [], month, day, year, }: MonthViewP
       types: cellTypes.slice(i * 7, (i + 1) * 7),
     });
   }
-
-  // Calculate cell height based on screen height and number of weeks
   const screenHeight = Dimensions.get('window').height;
-  const headerHeight = 40; // Adjust as needed for weekday header
+  const headerHeight = 40;
   const numWeeks = weeks.length;
-  const cellHeight = (screenHeight - headerHeight - 60) / numWeeks; // 60 for padding/status bar
-
-  // Get today's date
+  const cellHeight = (screenHeight - headerHeight - 60) / numWeeks;
   const today = new Date();
   const todayYear = today.getFullYear();
   const todayMonth = today.getMonth();
@@ -99,21 +82,19 @@ export default function MonthView({ events = [], month, day, year, }: MonthViewP
 
   return (
     <View style={styles.container}>
-      {/* Weekday headers */}
       <View style={styles.row}>
         {daysOfWeek.map((day, idx) => (
             <Text
             key={idx}
             style={[
                 styles.headerCell,
-                idx === todayDayOfWeek && styles.currentDayOfWeekHeader, // NEW: blue for today
+                idx === todayDayOfWeek && styles.currentDayOfWeekHeader,
             ]}
             >
             {day[0]}
             </Text>
         ))}
         </View>
-      {/* Calendar grid */}
       <View style={styles.grid}>
         {weeks.map((week, wIdx) => (
           <View key={wIdx} style={styles.weekRow}>
@@ -124,7 +105,6 @@ export default function MonthView({ events = [], month, day, year, }: MonthViewP
                 date.getMonth() === todayMonth &&
                 date.getDate() === todayDate;
               const isCurrentMonth = cellType === 'current';
-
               const dayEvents = events.filter(e => e.date === date.toISOString().slice(0, 10));
               const maxEventsToShow = 4;
               const extraCount = dayEvents.length - maxEventsToShow;
@@ -143,7 +123,7 @@ export default function MonthView({ events = [], month, day, year, }: MonthViewP
                       <Text
                         style={[
                           styles.dateText,
-                          !isCurrentMonth && styles.outOfMonthDateText, // NEW: lighter gray for out-of-month
+                          !isCurrentMonth && styles.outOfMonthDateText,
                         ]}
                       >
                         {date.getDate()}
