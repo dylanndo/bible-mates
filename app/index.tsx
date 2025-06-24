@@ -9,16 +9,6 @@ import MonthView, { CalendarEvent } from '../components/Calendar/MonthView';
 import { useAuth } from '../contexts/AuthContext'; // Necessary for user info
 import { Reading } from '../types';
 
-// Updated to use the new data structure and with unique IDs
-const events: CalendarEvent[] = [
-  { id: '1', firstName: 'Dylan', book: 'Genesis', chapter: '1', notes: 'Powerful start!', date: '2025-06-20' },
-  { id: '2', firstName: 'Nate', book: 'Psalm', chapter: '23', date: '2025-06-02' },
-  { id: '3', firstName: 'Christy', book: 'Matthew', chapter: '5', notes: 'Beatitudes.', date: '2025-06-05' },
-  { id: '4', firstName: 'Tov', book: 'Matthew', chapter: '5', notes: 'Beatitudes.', date: '2025-06-05' },
-  { id: '5', firstName: 'Dylan', book: 'John', chapter: '1', date: '2025-06-05' },
-  { id: '6', firstName: 'Nate', book: 'Proverbs', chapter: '3', date: '2025-06-05' },
-];
-
 export default function CalendarScreen() {
   const [date, setDate] = useState(new Date());
 
