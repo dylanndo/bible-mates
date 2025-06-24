@@ -1,84 +1,73 @@
-import { useRouter } from 'expo-router';
+import { Link } from 'expo-router';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import React, { useState } from 'react';
-import { Button, StyleSheet, Text, TextInput, View } from 'react-native';
-import { auth } from '../firebase'; // Make sure to set up your firebase.ts
+import { Alert, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import AppButton from '../components/core/AppButton';
+import AppTextInput from '../components/core/AppTextInput';
+import { auth } from '../firebase';
 
-export default function LoginScreen({ navigation }: any) {
+export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const router = useRouter();
 
   const handleLogin = async () => {
-    setLoading(true);
-    setError('');
+    if (!email || !password) {
+      Alert.alert('Missing Information', 'Please enter both email and password.');
+      return;
+    }
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      // Navigation will be handled by an auth listener (see below)
-      // Navigate to HomeScreen after successful login
-      router.replace('/calendar'); // This will load your root/home/tabs screen
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
+      // The router protection in AuthContext will handle navigation
+    } catch (error: any) {
+      Alert.alert('Login Failed', error.message);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Login</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        autoCapitalize="none"
-        value={email}
-        onChangeText={setEmail}
-        keyboardType="email-address"
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      <Button title={loading ? "Logging in..." : "Login"} onPress={handleLogin} disabled={loading} />
-      {/* ...your login form... */}
-      <Button
-        title="Sign Up"
-        onPress={() => router.replace('./SignUpScreen')}
-      />
-    </View>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.content}>
+        <Text style={styles.title}>Bible Mates</Text>
+        <AppTextInput
+          placeholder="Email"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+        />
+        <AppTextInput
+          placeholder="Password"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+        />
+        <AppButton title="Login" onPress={handleLogin} />
+        <Link href="/SignUpScreen" style={styles.link}>
+          <Text>Don&rsquo;t have an account? Sign Up</Text>
+        </Link>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#fff',
     justifyContent: 'center',
-    padding: 24,
-    backgroundColor: 'white',
+  },
+  content: {
+    paddingHorizontal: 20,
   },
   title: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: 'bold',
-    marginBottom: 24,
-    alignSelf: 'center',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    fontSize: 16,
-  },
-  error: {
-    color: 'red',
-    marginBottom: 16,
     textAlign: 'center',
+    marginBottom: 40,
+    color: '#0a7ea4'
+  },
+  link: {
+    marginTop: 15,
+    textAlign: 'center',
+    color: 'blue',
   },
 });

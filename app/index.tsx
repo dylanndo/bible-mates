@@ -64,11 +64,11 @@ export default function CalendarScreen() {
   const [selectedDay, setSelectedDay] = useState(today.getDate())
   const router = useRouter();
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     // Your logout logic here (e.g., signOut, then redirect)
     // signOut();
     // router.replace('/login');
-    signOut(auth);
+    await signOut(auth);
     router.replace('/LoginScreen');
   };
 

@@ -1,58 +1,28 @@
-import { Roboto_400Regular, Roboto_500Medium, Roboto_700Bold, useFonts } from '@expo-google-fonts/roboto';
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import React, { useEffect, useState } from 'react';
-import 'react-native-reanimated';
+import { AuthProvider } from '../contexts/AuthContext'; // Import the new provider
 
-import { useColorScheme } from '../hooks/useColorScheme';
-
-// Firebase Auth imports
-import { onAuthStateChanged, signOut, User } from 'firebase/auth';
-import { auth } from '../firebase';
-
-const handleLogout = async () => {
-  await signOut(auth);
-};
+// Re-export the useAuth hook from its new location for convenience.
+// Components can now import it from `app/_layout` or `contexts/AuthContext`.
+export { useAuth } from '../contexts/AuthContext';
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-  const [loaded] = useFonts({
-    Roboto_400Regular,
-    Roboto_500Medium,
-    Roboto_700Bold,
-  });
-
-  // Auth state
-  const [user, setUser] = useState<User | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      setUser(firebaseUser);
-      setAuthLoading(false);
-    });
-    return unsubscribe;
-  }, []);
-
-  if (!loaded || authLoading) {
-    // You can return a splash screen or loader here if you want
-    return null;
-  }
-
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack screenOptions={{ headerShown: false }}>
-        {user ? (
-          // User is logged in: show tabs
-          <Stack.Screen name="calendar/index" options={{ headerShown: false }} />
-        ) : (
-          // User is not logged in: show LoginScreen
-          <Stack.Screen name="LoginScreen" />
-        )}
-        <Stack.Screen name="+not-found" />
+    // Wrap the entire app in the AuthProvider
+    <AuthProvider>
+      <Stack>
+        <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="LoginScreen" options={{ headerShown: false }} />
+        <Stack.Screen name="SignUpScreen" options={{ headerShown: false }} />
+        {/* Add the future Day View screen to the stack navigator */}
+        <Stack.Screen 
+          name="day/[date]" 
+          options={{ 
+            title: "Day View", 
+            headerBackTitle: "Calendar",
+            headerShown: true, // Make sure the header is visible for this screen
+          }} 
+        />
       </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+    </AuthProvider>
   );
 }
