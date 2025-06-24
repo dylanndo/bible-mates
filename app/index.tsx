@@ -1,9 +1,9 @@
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
-import { Alert, Button, Keyboard, Modal, Platform, Pressable, StyleSheet, Text, TextInput, TouchableWithoutFeedback, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Button, Keyboard, Modal, Platform, Pressable, StyleSheet, Text, TextInput, TouchableWithoutFeedback, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { addReading, getUserProfile } from '../api/firebase';
+import { addReading, getReadingsForMonth, getUserProfile } from '../api/firebase';
 import CalendarHeader from '../components/Calendar/CalendarHeader';
 import MonthView, { CalendarEvent } from '../components/Calendar/MonthView';
 import { useAuth } from '../contexts/AuthContext'; // Necessary for user info
@@ -29,8 +29,8 @@ export default function CalendarScreen() {
   // State needed for the new feature
   const { user, signOut } = useAuth();
   const router = useRouter();
-  const [eventList, setEventList] = useState(events); // Manage events in state
-  const [modalVisible, setModalVisible] = useState(false);
+  const [eventList, setEventList] = useState<CalendarEvent[]>([]);
+  const [isLoading, setIsLoading] = useState(true);  const [modalVisible, setModalVisible] = useState(false);
   const [book, setBook] = useState('');
   const [chapter, setChapter] = useState('');
   const [notes, setNotes] = useState('');
@@ -38,6 +38,19 @@ export default function CalendarScreen() {
   const [logDate, setLogDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
 
+  // This hook will run when the component mounts and whenever the selected month or year changes.
+  useEffect(() => {
+    const fetchReadings = async () => {
+      setIsLoading(true);
+      // Fetch readings for the currently selected month and year
+      const readings = await getReadingsForMonth(selectedYear, selectedMonth);
+      setEventList(readings);
+      setIsLoading(false);
+    };
+
+    fetchReadings();
+  }, [selectedMonth, selectedYear]); // Dependencies array ensures this runs when the month/year changes
+  // --- END: NEW useEffect HOOK ---
 
   const handleLogout = async () => {
     await signOut();
@@ -108,7 +121,14 @@ export default function CalendarScreen() {
             }}
             onLogout={handleLogout}
         />
-        <MonthView events={eventList} month={selectedMonth} day={selectedDay} year={selectedYear} />
+        {/* Show a loading indicator while fetching data */}
+        {isLoading ? (
+            <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#1976d2" />
+            </View>
+        ) : (
+            <MonthView events={eventList} month={selectedMonth} day={selectedDay} year={selectedYear} />
+        )}
 
         <Pressable style={styles.fab} onPress={() => {
             // Reset the log date to today every time the modal is opened
@@ -258,5 +278,10 @@ const styles = StyleSheet.create({
     datePickerIOS: {
         // This ensures the button-like picker aligns nicely on the right
         justifyContent: 'flex-end',
+    },
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
 });

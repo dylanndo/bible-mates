@@ -60,3 +60,32 @@ export const getReadingsForDate = async (date: string): Promise<Reading[]> => {
     return [];
   }
 };
+
+/**
+ * Fetches all readings for a specific month and year.
+ * @param year The full year (e.g., 2025).
+ * @param month The month, 0-indexed (e.g., 5 for June).
+ * @returns A promise that resolves to an array of Reading objects.
+ */
+export const getReadingsForMonth = async (year: number, month: number): Promise<Reading[]> => {
+  try {
+    // Calculate the start and end dates for the month
+    const startDate = new Date(year, month, 1).toISOString().slice(0, 10);
+    const endDate = new Date(year, month + 1, 0).toISOString().slice(0, 10);
+
+    const readingsCol = collection(db, 'readings');
+    // Create a query to get all documents where the 'date' is within the month
+    const q = query(readingsCol, where('date', '>=', startDate), where('date', '<=', endDate));
+    const querySnapshot = await getDocs(q);
+
+    const readings: Reading[] = [];
+    querySnapshot.forEach((doc) => {
+      readings.push({ id: doc.id, ...doc.data() } as Reading);
+    });
+
+    return readings;
+  } catch (error) {
+    console.error('Error fetching readings for month:', error);
+    return [];
+  }
+};
