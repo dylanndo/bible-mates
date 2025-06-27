@@ -2,11 +2,10 @@ import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/dat
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Button, Keyboard, Modal, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableWithoutFeedback, View } from 'react-native';
-import { addReading, getReadingsForDate, getUserProfile } from '../../api/firebase';
+import { addReading, getGroupMates, getGroupsForUser, getReadingsForMatesByDate, getUserProfile } from '../../api/firebase';
 import CalendarHeader from '../../components/Calendar/CalendarHeader';
-import { CalendarEvent } from '../../components/Calendar/MonthView';
 import { useAuth } from '../../contexts/AuthContext';
-import { Reading } from '../../types';
+import { Mate, Reading } from '../../types';
 
 const daysOfWeek = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
 
@@ -15,7 +14,8 @@ export default function DayViewScreen() {
     const router = useRouter();
     
     const [viewedDate, setViewedDate] = useState<Date | null>(null);
-    const [readings, setReadings] = useState<CalendarEvent[]>([]);
+    const [readings, setReadings] = useState<Reading[]>([]);
+    const [mates, setMates] = useState<Mate[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     
     const [modalVisible, setModalVisible] = useState(false);
@@ -27,19 +27,33 @@ export default function DayViewScreen() {
     const { user } = useAuth();
 
     useEffect(() => {
-        if (date) {
-            const fetchAndSetData = async () => {
-                setIsLoading(true);
-                const initialDate = new Date(date + 'T00:00:00');
-                setViewedDate(initialDate);
-                
-                const fetchedReadings = await getReadingsForDate(date);
-                setReadings(fetchedReadings);
-                setIsLoading(false);
-            };
-            fetchAndSetData();
-        }
-    }, [date]);
+        const fetchAndSetData = async () => {
+            if (!date || !user) return;
+            setIsLoading(true);
+            
+            const initialDate = new Date(date + 'T00:00:00');
+            setViewedDate(initialDate);
+
+            // The data fetching logic is now group-aware, just like index.tsx
+            const userGroups = await getGroupsForUser(user.uid);
+            if (userGroups.length > 0) {
+                const groupId = userGroups[0].id;
+                // 1. Fetch all mates in the group so we can display a status for everyone.
+                const groupMates = await getGroupMates(groupId);
+                setMates(groupMates);
+
+                // 2. Fetch readings for only those mates on this specific day.
+                if (groupMates.length > 0) {
+                    const mateIds = groupMates.map(m => m.id);
+                    const fetchedReadings = await getReadingsForMatesByDate(mateIds, date);
+                    setReadings(fetchedReadings);
+                }
+            }
+            
+            setIsLoading(false);
+        };
+        fetchAndSetData();
+    }, [date, user]);
 
     const handleAddReading = async () => {
         if (!book || !chapter) { Alert.alert('Missing Info', 'Please provide a book and chapter.'); return; }

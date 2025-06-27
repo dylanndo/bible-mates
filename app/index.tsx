@@ -3,20 +3,22 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Button, Keyboard, Modal, Platform, Pressable, StyleSheet, Text, TextInput, TouchableWithoutFeedback, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { addReading, getReadingsForMonth, getUserProfile } from '../api/firebase';
+import { addReading, getGroupMates, getGroupsForUser, getReadingsForMatesByMonth, getUserProfile } from '../api/firebase';
 import CalendarHeader from '../components/Calendar/CalendarHeader';
-import MonthView, { CalendarEvent } from '../components/Calendar/MonthView';
+import MonthView from '../components/Calendar/MonthView';
 import { useAuth } from '../contexts/AuthContext'; // Necessary for user info
-import { Reading } from '../types';
+import { Mate, Reading } from '../types';
 
 export default function CalendarScreen() {
   const [date, setDate] = useState(new Date());
 
-  // State needed for the new feature
   const { user, signOut } = useAuth();
   const router = useRouter();
-  const [eventList, setEventList] = useState<CalendarEvent[]>([]);
-  const [isLoading, setIsLoading] = useState(true);  
+
+  const [mates, setMates] = useState<Mate[]>([]);
+  const [eventList, setEventList] = useState<Reading[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  
   const [modalVisible, setModalVisible] = useState(false);
   const [book, setBook] = useState('');
   const [chapter, setChapter] = useState('');
@@ -26,16 +28,45 @@ export default function CalendarScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
 
   useEffect(() => {
-    const fetchReadings = async () => {
-      setIsLoading(true);
-      // Fetch data based on the full date object
-      const readings = await getReadingsForMonth(date.getFullYear(), date.getMonth());
-      setEventList(readings);
-      setIsLoading(false);
+    const fetchGroupData = async () => {
+        // Don't do anything if the user isn't logged in yet
+        if (!user) {
+            setIsLoading(false);
+            return;
+        }
+
+        setIsLoading(true);
+        
+        // Step 1: Find which group(s) the current user belongs to.
+        const userGroups = await getGroupsForUser(user.uid);
+        
+        // Step 2: If they are in a group, use that group's data.
+        if (userGroups && userGroups.length > 0) {
+            // For now, we'll just use the first group the user is in.
+            const groupId = userGroups[0].id;
+            
+            // Step 2a: Get all the user profiles for the mates in that group.
+            const groupMates = await getGroupMates(groupId);
+            setMates(groupMates);
+
+            // Step 2b: Get all the readings for those specific mates for the current month.
+            if (groupMates.length > 0) {
+                const mateIds = groupMates.map(m => m.id);
+                const readings = await getReadingsForMatesByMonth(mateIds, date.getFullYear(), date.getMonth());
+                setEventList(readings);
+            }
+        } else {
+            // If the user is not in any group, clear the data.
+            setMates([]);
+            setEventList([]);
+        }
+        
+        setIsLoading(false);
     };
 
-    fetchReadings();
-  }, [date]);
+    fetchGroupData();
+    // This hook re-runs whenever the user logs in/out or changes the month.
+  }, [date, user]);
 
   const handleDayPress = (date: Date) => {
     const dateString = date.toISOString().slice(0, 10);
