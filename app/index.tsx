@@ -2,6 +2,8 @@ import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/dat
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Button, Keyboard, Modal, Platform, Pressable, StyleSheet, Text, TextInput, TouchableWithoutFeedback, View } from 'react-native';
+import { Drawer } from 'react-native-drawer-layout';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { addReading, getGroupMates, getGroupsForUser, getReadingsForMatesByMonth, getUserProfile } from '../api/firebase';
 import CalendarHeader from '../components/Calendar/CalendarHeader';
@@ -23,8 +25,12 @@ export default function CalendarScreen() {
   const [userGroups, setUserGroups] = useState<Group[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   
-  // State for the side menu, join group modal, and log reading modal
-  const [isSideMenuVisible, setIsSideMenuVisible] = useState(false);
+  // --- START: FIX ---
+  // The drawer's visibility is now controlled by a simple state variable.
+  // This is a more stable pattern than using a ref for this library.
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  // --- END: FIX ---
+
   const [isJoinGroupModalVisible, setIsJoinGroupModalVisible] = useState(false);
   const [isLogReadingModalVisible, setIsLogReadingModalVisible] = useState(false);
 
@@ -59,8 +65,9 @@ export default function CalendarScreen() {
               setEventList(readings);
           }
       } else {
+          const ownReadings = await getReadingsForMatesByMonth([user.uid], date.getFullYear(), date.getMonth());
+          setEventList(ownReadings);
           setMates([]);
-          setEventList([]);
       }
       
       setIsLoading(false);
@@ -100,69 +107,73 @@ export default function CalendarScreen() {
       console.error(error);
     }
   };
-
   const onChangeDate = (event: DateTimePickerEvent, selectedDate?: Date) => {
     if (Platform.OS === 'android') { setShowDatePicker(false); }
     if (event.type === 'set' && selectedDate) { setLogDate(selectedDate); }
   };
-
   const openLogReadingModal = () => {
     setLogDate(new Date());
     setShowDatePicker(false);
     setIsLogReadingModalVisible(true);
-  }
+  };
 
   if (isLoading) {
     return <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#1976d2" /></View>;
   }
-
-  // If the user has no groups, show the JoinGroupScreen
-  if (userGroups.length === 0) {
-      return <JoinGroupScreen onGroupJoined={fetchAllData} />;
-  }
-
+  
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <CalendarHeader
-          date={date}
-          onDateChange={setDate}
-          onLogout={handleLogout}
-          onMenuPress={() => setIsSideMenuVisible(true)}
-      />
-      <MonthView
-          events={eventList}
-          mates={mates} 
-          month={date.getMonth()}
-          day={date.getDate()}
-          year={date.getFullYear()}
-          onDayPress={handleDayPress}
-      />
-      
-      <Pressable style={styles.fab} onPress={openLogReadingModal}>
-          <Text style={styles.fabIcon}>+</Text>
-      </Pressable>
-
-      <SideMenu 
-        visible={isSideMenuVisible}
-        onClose={() => setIsSideMenuVisible(false)}
-        userEmail={user?.email}
-        groups={userGroups}
-        selectedGroupId={selectedGroupId}
-        onSelectGroup={(groupId) => {
-            setSelectedGroupId(groupId);
-            setIsSideMenuVisible(false);
-        }}
-        onJoinGroupPress={() => {
-            setIsSideMenuVisible(false);
-            setIsJoinGroupModalVisible(true);
-        }}
-        onCreateGroupPress={() => Alert.alert("Coming Soon!", "The ability to create new groups is coming soon.")}
-      />
+    <GestureHandlerRootView style={{flex: 1}}>
+      <Drawer
+        // --- START: FIX ---
+        // The drawer's state is now controlled by the `open` prop.
+        open={isDrawerOpen}
+        onOpen={() => setIsDrawerOpen(true)}
+        onClose={() => setIsDrawerOpen(false)}
+        // The prop `renderNavigationView` has been replaced with the correct `renderDrawerContent`.
+        renderDrawerContent={() => (
+        // --- END: FIX ---
+            <SideMenu 
+                userEmail={user?.email}
+                groups={userGroups}
+                selectedGroupId={selectedGroupId}
+                onSelectGroup={(groupId) => {
+                    setSelectedGroupId(groupId);
+                    setIsDrawerOpen(false); // Close drawer after selection
+                }}
+                onJoinGroupPress={() => {
+                    setIsDrawerOpen(false);
+                    setIsJoinGroupModalVisible(true);
+                }}
+                onCreateGroupPress={() => Alert.alert("Coming Soon!", "The ability to create new groups is coming soon.")}
+            />
+        )}
+      >
+        <SafeAreaView style={styles.container} edges={['top']}>
+            <CalendarHeader
+                date={date}
+                onDateChange={setDate}
+                onLogout={handleLogout}
+                onMenuPress={() => setIsDrawerOpen(true)}
+            />
+            <MonthView
+                events={eventList}
+                mates={mates} 
+                month={date.getMonth()}
+                day={date.getDate()}
+                year={date.getFullYear()}
+                onDayPress={handleDayPress}
+            />
+            
+            <Pressable style={styles.fab} onPress={openLogReadingModal}>
+                <Text style={styles.fabIcon}>+</Text>
+            </Pressable>
+        </SafeAreaView>
+      </Drawer>
 
       <JoinGroupModal 
-        visible={isJoinGroupModalVisible}
-        onClose={() => setIsJoinGroupModalVisible(false)}
-        onGroupJoined={fetchAllData}
+          visible={isJoinGroupModalVisible}
+          onClose={() => setIsJoinGroupModalVisible(false)}
+          onGroupJoined={fetchAllData}
       />
 
       <Modal visible={isLogReadingModalVisible} onRequestClose={() => setIsLogReadingModalVisible(false)} animationType="slide" transparent={true}>
@@ -190,7 +201,7 @@ export default function CalendarScreen() {
               </View>
           </TouchableWithoutFeedback>
       </Modal>
-    </SafeAreaView>
+    </GestureHandlerRootView>
   );
 }
 
