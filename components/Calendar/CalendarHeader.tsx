@@ -7,6 +7,7 @@ type CalendarHeaderProps = {
   onDateChange: (newDate: Date) => void;
   onLogout?: () => void;
   showBackButton?: boolean;
+  onMenuPress?: () => void;
   onBackPress?: () => void;
 };
 
@@ -22,7 +23,8 @@ export default function CalendarHeader({
   date,
   onDateChange,
   onLogout,
-  showBackButton = false,
+  showBackButton = false, // Default to false
+  onMenuPress,
   onBackPress,
 }: CalendarHeaderProps) {
   const [modalVisible, setModalVisible] = useState(false);
@@ -44,12 +46,13 @@ export default function CalendarHeader({
 
   return (
     <View style={styles.headerContainer}>
+      {/* Conditionally render back button or menu button */}
       {showBackButton ? (
         <TouchableOpacity style={styles.iconButton} onPress={onBackPress}>
           <Feather name="arrow-left" size={26} color="#222" />
         </TouchableOpacity>
       ) : (
-        <TouchableOpacity style={styles.iconButton}>
+        <TouchableOpacity style={styles.iconButton} onPress={onMenuPress}>
           <Feather name="menu" size={26} color="#222" />
         </TouchableOpacity>
       )}

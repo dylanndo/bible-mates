@@ -1,8 +1,9 @@
+import { Feather } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Button, Keyboard, Modal, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableWithoutFeedback, View } from 'react-native';
-import { addReading, getGroupMates, getGroupsForUser, getReadingsForMatesByDate, getUserProfile } from '../../api/firebase';
+import { addReading, getGroupMates, getGroupsForUser, getUserProfile } from '../../api/firebase';
 import CalendarHeader from '../../components/Calendar/CalendarHeader';
 import { useAuth } from '../../contexts/AuthContext';
 import { Mate, Reading } from '../../types';
@@ -18,14 +19,14 @@ export default function DayViewScreen() {
     const [mates, setMates] = useState<Mate[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     
+    const { user } = useAuth();
     const [modalVisible, setModalVisible] = useState(false);
     const [book, setBook] = useState('');
     const [chapter, setChapter] = useState('');
     const [notes, setNotes] = useState('');
     const [logDate, setLogDate] = useState(new Date());
     const [showDatePicker, setShowDatePicker] = useState(false);
-    const { user } = useAuth();
-
+    
     useEffect(() => {
         const fetchAndSetData = async () => {
             if (!date || !user) return;
@@ -34,19 +35,15 @@ export default function DayViewScreen() {
             const initialDate = new Date(date + 'T00:00:00');
             setViewedDate(initialDate);
 
-            // The data fetching logic is now group-aware, just like index.tsx
             const userGroups = await getGroupsForUser(user.uid);
-            if (userGroups.length > 0) {
+            if (userGroups && userGroups.length > 0) {
                 const groupId = userGroups[0].id;
-                // 1. Fetch all mates in the group so we can display a status for everyone.
                 const groupMates = await getGroupMates(groupId);
                 setMates(groupMates);
-
-                // 2. Fetch readings for only those mates on this specific day.
-                if (groupMates.length > 0) {
-                    const mateIds = groupMates.map(m => m.id);
-                    const fetchedReadings = await getReadingsForMatesByDate(mateIds, date);
-                    setReadings(fetchedReadings);
+            } else {
+                const ownProfile = await getUserProfile(user.uid);
+                if (ownProfile) {
+                    setMates([ownProfile]);
                 }
             }
             
@@ -54,6 +51,11 @@ export default function DayViewScreen() {
         };
         fetchAndSetData();
     }, [date, user]);
+
+    const handleDateChangeInHeader = (newDate: Date) => {
+        const newDateString = newDate.toISOString().slice(0, 10);
+        router.replace(`/day/${newDateString}`);
+    };
 
     const handleAddReading = async () => {
         if (!book || !chapter) { Alert.alert('Missing Info', 'Please provide a book and chapter.'); return; }
@@ -83,15 +85,18 @@ export default function DayViewScreen() {
         setLogDate(new Date()); setShowDatePicker(false); setModalVisible(true);
     };
 
+    const handleBackPress = () => {
+        if (router.canGoBack()) {
+            router.back();
+        } else {
+            router.replace('/');
+        }
+    };
+
     if (!viewedDate) {
         return <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#1976d2" /></View>;
     }
     
-    const handleDateChangeInHeader = (newDate: Date) => {
-        const newDateString = newDate.toISOString().slice(0, 10);
-        router.replace(`/day/${newDateString}`);
-    };
-
     const isToday = new Date().toDateString() === viewedDate.toDateString();
 
     return (
@@ -100,7 +105,7 @@ export default function DayViewScreen() {
                 date={viewedDate}
                 onDateChange={handleDateChangeInHeader}
                 showBackButton={true}
-                onBackPress={() => router.back()}
+                onBackPress={handleBackPress}
             />
 
             <View style={styles.dayHeader}>
@@ -113,17 +118,26 @@ export default function DayViewScreen() {
             <ScrollView contentContainerStyle={styles.scrollContentContainer}>
                 {isLoading ? (
                     <ActivityIndicator size="large" color="#1976d2" style={{ marginTop: 50 }} />
-                ) : readings.length > 0 ? (
-                    readings.map(reading => (
-                        <View key={reading.id} style={[styles.eventBlock, { minHeight: 80, flex: 1/Math.max(4, readings.length) }]}>
-                            <Text style={styles.eventTextName}>{reading.firstName}</Text>
-                            <Text style={styles.eventTextReading}>{reading.book} {reading.chapter}</Text>
-                        </View>
-                    ))
                 ) : (
-                    <View style={styles.noEventsContainer}>
-                        <Text style={styles.noEventsText}>No readings for this day.</Text>
-                    </View>
+                    mates.map(mate => {
+                        const readingForMate = readings.find(r => r.userId === mate.id);
+                        const hasRead = !!readingForMate;
+                        return (
+                            <View key={mate.id} style={[styles.eventBlock, !hasRead && styles.eventBlockUnread]}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    <Text style={[styles.eventTextName, !hasRead && styles.eventTextUnread]}>
+                                        {mate.firstName} {mate.lastName}
+                                    </Text>
+                                    {hasRead && <Feather name="check-circle" size={18} color="green" style={{ marginLeft: 8 }} />}
+                                </View>
+                                {hasRead && (
+                                    <Text style={styles.eventTextReading}>
+                                        Read: {readingForMate.book} {readingForMate.chapter}
+                                    </Text>
+                                )}
+                            </View>
+                        )
+                    })
                 )}
             </ScrollView>
 
@@ -170,11 +184,11 @@ const styles = StyleSheet.create({
     dateText: { fontSize: 22, fontWeight: 'bold', color: '#333' },
     todayDateText: { fontSize: 22, fontWeight: 'bold', color: '#fff' },
     scrollContentContainer: { flexGrow: 1, padding: 8 },
-    eventBlock: { backgroundColor: '#e3f2fd', margin: 4, padding: 12, borderRadius: 8, justifyContent: 'center' },
-    eventTextName: { fontSize: 16, fontWeight: 'bold', color: '#0d47a1' },
-    eventTextReading: { fontSize: 14, color: '#1565c0', marginTop: 4 },
-    noEventsContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 50 },
-    noEventsText: { fontSize: 16, color: '#888' },
+    eventBlock: { backgroundColor: '#e3f2fd', marginVertical: 4, padding: 16, borderRadius: 8 },
+    eventBlockUnread: { backgroundColor: '#fafafa', borderColor: '#eee', borderWidth: 1 },
+    eventTextName: { fontSize: 18, fontWeight: 'bold', color: '#0d47a1' },
+    eventTextUnread: { color: '#aaa', fontWeight: 'normal' },
+    eventTextReading: { fontSize: 16, color: '#1565c0', marginTop: 8, fontStyle: 'italic' },
     fab: { position: 'absolute', right: 25, bottom: 25, width: 60, height: 60, borderRadius: 30, backgroundColor: '#1976d2', justifyContent: 'center', alignItems: 'center', elevation: 8 },
     fabIcon: { fontSize: 30, color: 'white', lineHeight: 32 },
     modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },

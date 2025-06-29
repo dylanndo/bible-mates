@@ -1,17 +1,10 @@
 import React from 'react';
 import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
-
-export type CalendarEvent = {
-  id: string;
-  firstName: string;
-  book: string;
-  chapter: string;
-  notes?: string;
-  date: string; // 'YYYY-MM-DD'
-};
+import { Mate, Reading } from '../../types';
 
 type MonthViewProps = {
-  events?: CalendarEvent[];
+  events: Reading[];
+  mates: Mate[];
   month: number;
   day: number;
   year: number;

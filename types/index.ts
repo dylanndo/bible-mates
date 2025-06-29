@@ -14,3 +14,10 @@ export type Mate = {
   lastName: string; // Add lastName
   email: string;
 };
+
+export type Group = {
+  id: string;
+  name: string;
+  mateIds: string[];
+  inviteCode: string;
+};
