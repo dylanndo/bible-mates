@@ -52,7 +52,7 @@ export default function CalendarHeader({
           <Feather name="arrow-left" size={26} color="#222" />
         </TouchableOpacity>
       ) : (
-        <TouchableOpacity style={styles.iconButton}>
+        <TouchableOpacity style={styles.iconButton} onPress={onMenuPress}>
           <Feather name="menu" size={26} color="#222" />
         </TouchableOpacity>
       )}
