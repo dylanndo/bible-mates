@@ -7,7 +7,7 @@ type Props = {
   userEmail?: string | null;
   groups: Group[];
   selectedGroupId: string | null;
-  onSelectGroup: (groupId: string) => void;
+  onSelectGroup: (groupId: string | void) => void;
   onJoinGroupPress: () => void;
   onCreateGroupPress: () => void;
 };
@@ -31,6 +31,20 @@ export default function SideMenu({
           <Text style={styles.userEmail}>{userEmail}</Text>
         </View>
         <View style={styles.divider} />
+        <TouchableOpacity
+            key="personal-calendar"
+            style={[
+            styles.groupRow,
+            // It is only highlighted if NO group is selected
+            selectedGroupId === null && styles.selectedGroupRow,
+            ]}
+            onPress={() => onSelectGroup(null)}
+        >
+            <Feather name="calendar" size={20} color={selectedGroupId === null ? '#fff' : '#333'} />
+            <Text style={[styles.groupName, selectedGroupId === null && styles.selectedGroupName]}>
+            My Calendar
+            </Text>
+        </TouchableOpacity>
         {groups.map(group => (
           <TouchableOpacity
             key={group.id}

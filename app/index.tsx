@@ -45,14 +45,9 @@ export default function CalendarScreen() {
       const groups = await getGroupsForUser(user.uid);
       setUserGroups(groups);
       
-      if (groups && groups.length > 0) {
-          // --- USER IS IN A GROUP ---
-          const currentGroupId = selectedGroupId || groups[0].id;
-          if (!selectedGroupId) {
-              setSelectedGroupId(currentGroupId);
-          }
-          
-          const groupMates = await getGroupMates(currentGroupId);
+      if (selectedGroupId) {
+          // --- A specific group is selected ---
+          const groupMates = await getGroupMates(selectedGroupId);
           setMates(groupMates);
 
           if (groupMates.length > 0) {
@@ -61,12 +56,10 @@ export default function CalendarScreen() {
               setEventList(readings);
           }
       } else {
-          // Fetch only the current user's personal readings.
+          // --- "My Calendar" is selected, or no group is selected by default ---
           const ownReadings = await getReadingsForMatesByMonth([user.uid], date.getFullYear(), date.getMonth());
           setEventList(ownReadings);
 
-          // Also fetch their own profile and set them as the only "mate".
-          // This ensures their name will appear correctly on their own events.
           const ownProfile = await getUserProfile(user.uid);
           if (ownProfile) {
               setMates([ownProfile]);
@@ -139,7 +132,7 @@ export default function CalendarScreen() {
                 groups={userGroups}
                 selectedGroupId={selectedGroupId}
                 onSelectGroup={(groupId) => {
-                    setSelectedGroupId(groupId);
+                    setSelectedGroupId(groupId ?? null);
                     setIsDrawerOpen(false);
                 }}
                 onJoinGroupPress={() => {
