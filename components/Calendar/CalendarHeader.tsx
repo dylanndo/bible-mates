@@ -7,7 +7,7 @@ type CalendarHeaderProps = {
   onDateChange: (newDate: Date) => void;
   onLogout?: () => void;
   showBackButton?: boolean;
-  onBackPress?: () => void;
+  onMenuPress?: () => void;
 };
 
 const monthNames = [
@@ -23,7 +23,7 @@ export default function CalendarHeader({
   onDateChange,
   onLogout,
   showBackButton = false,
-  onBackPress,
+  onMenuPress,
 }: CalendarHeaderProps) {
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(date.getMonth());
@@ -44,15 +44,9 @@ export default function CalendarHeader({
 
   return (
     <View style={styles.headerContainer}>
-      {showBackButton ? (
-        <TouchableOpacity style={styles.iconButton} onPress={onBackPress}>
-          <Feather name="arrow-left" size={26} color="#222" />
-        </TouchableOpacity>
-      ) : (
-        <TouchableOpacity style={styles.iconButton}>
-          <Feather name="menu" size={26} color="#222" />
-        </TouchableOpacity>
-      )}
+      <TouchableOpacity style={styles.iconButton} onPress={onMenuPress}>
+        <Feather name="menu" size={26} color="#222" />
+      </TouchableOpacity>
 
       <TouchableOpacity style={styles.monthContainer} onPress={() => setModalVisible(true)}>
         <Text style={styles.monthText}>{displayMonth}</Text>
