@@ -1,7 +1,7 @@
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Button, Keyboard, Modal, Platform, Pressable, StyleSheet, Text, TextInput, TouchableWithoutFeedback, View } from 'react-native';
+import { ActivityIndicator, Alert, Button, Dimensions, Keyboard, Modal, Platform, Pressable, StyleSheet, Text, TextInput, TouchableWithoutFeedback, View } from 'react-native';
 import { Drawer } from 'react-native-drawer-layout';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -25,12 +25,7 @@ export default function CalendarScreen() {
   const [userGroups, setUserGroups] = useState<Group[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   
-  // --- START: FIX ---
-  // The drawer's visibility is now controlled by a simple state variable.
-  // This is a more stable pattern than using a ref for this library.
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  // --- END: FIX ---
-
   const [isJoinGroupModalVisible, setIsJoinGroupModalVisible] = useState(false);
   const [isLogReadingModalVisible, setIsLogReadingModalVisible] = useState(false);
 
@@ -51,6 +46,7 @@ export default function CalendarScreen() {
       setUserGroups(groups);
       
       if (groups && groups.length > 0) {
+          // --- USER IS IN A GROUP ---
           const currentGroupId = selectedGroupId || groups[0].id;
           if (!selectedGroupId) {
               setSelectedGroupId(currentGroupId);
@@ -65,9 +61,18 @@ export default function CalendarScreen() {
               setEventList(readings);
           }
       } else {
+          // Fetch only the current user's personal readings.
           const ownReadings = await getReadingsForMatesByMonth([user.uid], date.getFullYear(), date.getMonth());
           setEventList(ownReadings);
-          setMates([]);
+
+          // Also fetch their own profile and set them as the only "mate".
+          // This ensures their name will appear correctly on their own events.
+          const ownProfile = await getUserProfile(user.uid);
+          if (ownProfile) {
+              setMates([ownProfile]);
+          } else {
+              setMates([]);
+          }
       }
       
       setIsLoading(false);
@@ -124,21 +129,18 @@ export default function CalendarScreen() {
   return (
     <GestureHandlerRootView style={{flex: 1}}>
       <Drawer
-        // --- START: FIX ---
-        // The drawer's state is now controlled by the `open` prop.
         open={isDrawerOpen}
         onOpen={() => setIsDrawerOpen(true)}
         onClose={() => setIsDrawerOpen(false)}
-        // The prop `renderNavigationView` has been replaced with the correct `renderDrawerContent`.
+        drawerStyle={{ width: Dimensions.get('window').width * 0.8 }}
         renderDrawerContent={() => (
-        // --- END: FIX ---
             <SideMenu 
                 userEmail={user?.email}
                 groups={userGroups}
                 selectedGroupId={selectedGroupId}
                 onSelectGroup={(groupId) => {
                     setSelectedGroupId(groupId);
-                    setIsDrawerOpen(false); // Close drawer after selection
+                    setIsDrawerOpen(false);
                 }}
                 onJoinGroupPress={() => {
                     setIsDrawerOpen(false);
