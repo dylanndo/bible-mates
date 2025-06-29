@@ -7,7 +7,6 @@ import { addReading, getGroupMates, getGroupsForUser, getReadingsForMatesByMonth
 import CalendarHeader from '../components/Calendar/CalendarHeader';
 import MonthView from '../components/Calendar/MonthView';
 import JoinGroupModal from '../components/JoinGroupModal';
-import JoinGroupScreen from '../components/JoinGroupScreen';
 import SideMenu from '../components/SideMenu';
 import { useAuth } from '../contexts/AuthContext';
 import { Group, Mate, Reading } from '../types';
