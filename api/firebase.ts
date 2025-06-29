@@ -20,7 +20,6 @@ export const setUserProfile = async (uid: string, data: { firstName: string, las
 export const getUserProfile = async (uid: string): Promise<Mate | null> => {
   try {
     const userDocRef = doc(db, 'users', uid);
-    // This line now works correctly because getDoc is imported.
     const userDoc = await getDoc(userDocRef);
     if (userDoc.exists()) {
       return { id: userDoc.id, ...userDoc.data() } as Mate;
