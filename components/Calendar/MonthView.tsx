@@ -1,10 +1,10 @@
 import React from 'react';
-import { Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Mate, Reading } from '../../types';
 
 type MonthViewProps = {
   events: Reading[];
-  mates: Mate[];
+  mates: Mate[]; // Mates array now includes the 'color' property
   month: number;
   day: number;
   year: number;
@@ -43,19 +43,21 @@ function getNextMonthDays(year: number, month: number, count: number) {
   return days;
 }
 
-export default function MonthView({ events = [], month, day, year, onDayPress }: MonthViewProps) {
+export default function MonthView({ events = [], mates = [], month, day, year, onDayPress }: MonthViewProps) {
   const days = getMonthDays(year, month);
-  const firstDayOfWeek = days[0].getDay();
+  const firstDayOfWeek = days.length > 0 ? days[0].getDay() : 0;
   const prevMonthDays = getPrevMonthDays(year, month, firstDayOfWeek);
   let calendarCells = [...prevMonthDays, ...days];
   const totalCells = 6 * 7;
   const nextMonthDayCount = totalCells - calendarCells.length;
-  const nextMonthDays = getNextMonthDays(year, month, nextMonthDayCount);
-  calendarCells = [...calendarCells, ...nextMonthDays];
+  if(nextMonthDayCount > 0){
+    const nextMonthDays = getNextMonthDays(year, month, nextMonthDayCount);
+    calendarCells = [...calendarCells, ...nextMonthDays];
+  }
   const cellTypes = [
     ...Array(prevMonthDays.length).fill('prev'),
     ...Array(days.length).fill('current'),
-    ...Array(nextMonthDays.length).fill('next'),
+    ...Array(nextMonthDayCount > 0 ? nextMonthDayCount : 0).fill('next'),
   ];
   const weeks = [];
   for (let i = 0; i < 6; i++) {
@@ -64,10 +66,7 @@ export default function MonthView({ events = [], month, day, year, onDayPress }:
       types: cellTypes.slice(i * 7, (i + 1) * 7),
     });
   }
-  const screenHeight = Dimensions.get('window').height;
-  const headerHeight = 40;
-  const numWeeks = weeks.length;
-  const cellHeight = (screenHeight - headerHeight - 60) / numWeeks;
+  
   const today = new Date();
   const todayYear = today.getFullYear();
   const todayMonth = today.getMonth();
@@ -77,7 +76,7 @@ export default function MonthView({ events = [], month, day, year, onDayPress }:
   return (
     <View style={styles.container}>
       <View style={styles.row}>
-        {daysOfWeek.map((day, idx) => (
+        {daysOfWeek.map((dayName, idx) => (
             <Text
             key={idx}
             style={[
@@ -85,13 +84,13 @@ export default function MonthView({ events = [], month, day, year, onDayPress }:
                 idx === todayDayOfWeek && styles.currentDayOfWeekHeader,
             ]}
             >
-            {day[0]}
+            {dayName[0]}
             </Text>
         ))}
         </View>
       <View style={styles.grid}>
         {weeks.map((week, wIdx) => (
-          <View key={wIdx} style={styles.weekRow}>
+          <View key={wIdx} style={[styles.weekRow, wIdx === weeks.length - 1 && { borderBottomWidth: 0 }]}>
             {week.days.map((date, dIdx) => {
               const cellType = week.types[dIdx];
               const isToday =
@@ -106,7 +105,7 @@ export default function MonthView({ events = [], month, day, year, onDayPress }:
               return (
                 <Pressable
                   key={date.toISOString()}
-                  style={[styles.dayCell, { height: cellHeight }]}
+                  style={styles.dayCell}
                   onPress={() => onDayPress(date)}
                 >
                   <View style={styles.dateNumberWrapper}>
@@ -125,11 +124,23 @@ export default function MonthView({ events = [], month, day, year, onDayPress }:
                       </Text>
                     )}
                   </View>
-                  {dayEvents.slice(0, maxEventsToShow).map(event => (
-                      <View key={event.id} style={styles.eventBlock}>
-                        <Text style={styles.eventText}>{event.firstName}</Text>
-                      </View>
-                    ))}
+                  
+                  <View style={styles.eventsContainer}>
+                    {dayEvents.slice(0, maxEventsToShow).map(event => {
+                      // Find the mate corresponding to this event to get their color.
+                      const mate = mates.find(m => m.id === event.userId);
+                      // Use the mate's color, or a fallback color if not found.
+                      const eventColor = mate?.color || '#e0e0e0';
+
+                      return (
+                        <View key={event.id} style={[styles.eventBlock, { backgroundColor: eventColor }]}>
+                          <Text style={styles.eventText} numberOfLines={1}>
+                            {event.firstName}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
                   {extraCount > 0 && (
                     <Text style={styles.ellipsis}>...</Text>
                   )}
@@ -144,30 +155,15 @@ export default function MonthView({ events = [], month, day, year, onDayPress }:
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 0, backgroundColor: '#fff' },
-  row: {
-    flexDirection: 'row',
-    height: 40,
-    borderBottomWidth: 1,
-    borderColor: '#e0e0e0',
-    backgroundColor: '#f9f9f9',
-  },
-  headerCell: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 12,
-    fontWeight: '600',
-    lineHeight: 40,
-    color: '#666',
-  },
-  currentDayOfWeekHeader: {
-  color: '#1976d2',
-  },
-  grid: { flex: 1 },
-  weekRow: { flexDirection: 'row', flex: 1 },
+  container: { flex: 1, flexDirection: 'column', backgroundColor: '#fff' },
+  row: { flexDirection: 'row', height: 40, borderBottomWidth: 1, borderColor: '#e0e0e0' },
+  headerCell: { flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '600', lineHeight: 40, color: '#666' },
+  currentDayOfWeekHeader: { color: '#1976d2' },
+  grid: { flex: 1, flexDirection: 'column' },
+  weekRow: { flexDirection: 'row', flex: 1, borderBottomWidth: 0.5, borderColor: '#e0e0e0' },
   dayCell: {
     flex: 1,
-    borderWidth: 0.5,
+    borderRightWidth: 0.5,
     borderColor: '#e0e0e0',
     alignItems: 'center',
     justifyContent: 'flex-start',
@@ -183,17 +179,12 @@ const styles = StyleSheet.create({
   todayCircle: {
     backgroundColor: '#1976d2',
     borderRadius: 16,
-    width: 22,
-    height: 22,
+    width: 24,
+    height: 24,
     alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
+    justifyContent: 'center'
   },
-  todayText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
+  todayText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
   dateText: {
     fontWeight: '600',
     fontSize: 12,
@@ -204,38 +195,30 @@ const styles = StyleSheet.create({
     includeFontPadding: false,   
     lineHeight: 22,
   },
-  outOfMonthDateText: {
-    color: '#bbb',
+  outOfMonthDateText: { color: '#bbb' },
+  eventsContainer: {
+    flex: 1,
+    width: '100%',
   },
   eventBlock: {
-    backgroundColor: '#ADD8E6',
     borderRadius: 3,
     paddingHorizontal: 4,
-    paddingTop: 0.75,
+    paddingTop: 0.5,
+    paddingBottom: 0.75,
     marginTop: 0.75,
     marginBottom: 1,
-    minHeight: 14,
     width: '95%',
     alignSelf: 'stretch',
   },
+  
   eventText: {
     fontSize: 10,
-    color: '#FFFFFF',
+    color: '#333',
     fontWeight: '600',
   },
-  moreText: {
-    fontSize: 10,
-    color: '#999',
-    marginTop: 2,
-  },
   ellipsis: {
-    fontSize: 16,
+    fontSize: 10,
     color: '#888',
-    marginTop: -5,
-    fontWeight: '900',
-    letterSpacing: 1,
-    alignSelf: 'flex-start',
-    paddingLeft: 4,
-    },
-
+    alignSelf: 'center',
+  },
 });

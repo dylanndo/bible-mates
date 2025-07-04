@@ -3,10 +3,11 @@ import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/dat
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Button, Keyboard, Modal, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableWithoutFeedback, View } from 'react-native';
-import { addReading, getGroupMates, getGroupsForUser, getUserProfile } from '../../api/firebase';
+import { addReading, getGroupMates, getGroupsForUser, getReadingsForMatesByDate, getUserProfile } from '../../api/firebase';
 import CalendarHeader from '../../components/Calendar/CalendarHeader';
 import { useAuth } from '../../contexts/AuthContext';
 import { Mate, Reading } from '../../types';
+import { getColorForUser, USER_COLORS } from '../../utils/colorHelper';
 
 const daysOfWeek = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
 
@@ -39,11 +40,33 @@ export default function DayViewScreen() {
             if (userGroups && userGroups.length > 0) {
                 const groupId = userGroups[0].id;
                 const groupMates = await getGroupMates(groupId);
-                setMates(groupMates);
+                const currentGroup = userGroups.find(g => g.id === groupId);
+                const mateIdsInOrder = currentGroup ? currentGroup.mateIds : [];
+                
+                const matesWithColors = groupMates.map(mate => {
+                    let color = getColorForUser(mate.id);
+                    if (mate.id === user.uid) {
+                        color = USER_COLORS[0];
+                    } else if (mateIdsInOrder.length > 0) {
+                        const otherMatesOrder = mateIdsInOrder.filter(id => id !== user.uid);
+                        const joinIndex = otherMatesOrder.indexOf(mate.id);
+                        if (joinIndex !== -1) {
+                            color = USER_COLORS[(joinIndex + 1) % USER_COLORS.length];
+                        }
+                    }
+                    return { ...mate, color };
+                });
+                setMates(matesWithColors);
+
+                if (groupMates.length > 0) {
+                    const mateIds = groupMates.map(m => m.id);
+                    const fetchedReadings = await getReadingsForMatesByDate(mateIds, date);
+                    setReadings(fetchedReadings);
+                }
             } else {
                 const ownProfile = await getUserProfile(user.uid);
                 if (ownProfile) {
-                    setMates([ownProfile]);
+                    setMates([{ ... ownProfile, color: USER_COLORS[0]}]);
                 }
             }
             
@@ -123,7 +146,7 @@ export default function DayViewScreen() {
                         const readingForMate = readings.find(r => r.userId === mate.id);
                         const hasRead = !!readingForMate;
                         return (
-                            <View key={mate.id} style={[styles.eventBlock, !hasRead && styles.eventBlockUnread]}>
+                            <View key={mate.id} style={[styles.eventBlock, { backgroundColor: hasRead ? mate.color || '#e3f2fd' : '#fafafa' }, !hasRead && styles.eventBlockUnread]}>
                                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                     <Text style={[styles.eventTextName, !hasRead && styles.eventTextUnread]}>
                                         {mate.firstName} {mate.lastName}
@@ -184,7 +207,7 @@ const styles = StyleSheet.create({
     dateText: { fontSize: 22, fontWeight: 'bold', color: '#333' },
     todayDateText: { fontSize: 22, fontWeight: 'bold', color: '#fff' },
     scrollContentContainer: { flexGrow: 1, padding: 8 },
-    eventBlock: { backgroundColor: '#e3f2fd', marginVertical: 4, padding: 16, borderRadius: 8 },
+    eventBlock: { marginVertical: 4, padding: 16, borderRadius: 8 },
     eventBlockUnread: { backgroundColor: '#fafafa', borderColor: '#eee', borderWidth: 1 },
     eventTextName: { fontSize: 18, fontWeight: 'bold', color: '#0d47a1' },
     eventTextUnread: { color: '#aaa', fontWeight: 'normal' },
