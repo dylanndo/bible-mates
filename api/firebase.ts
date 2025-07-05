@@ -1,7 +1,5 @@
-// --- EDIT: Added 'getDoc' to the import list from firestore. ---
 import { addDoc, arrayUnion, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore';
 import { db } from '../firebase';
-// --- EDIT: Added 'Group' to the list of imported types. ---
 import { Group, Mate, Reading } from '../types';
 
 // The type for creating a new reading, omitting the auto-generated ID.
@@ -57,6 +55,36 @@ export const getReadingsForDate = async (date: string): Promise<Reading[]> => {
     return [];
   }
 };
+
+/**
+ * Fetches all readings for a specific list of users on a specific day.
+ * @param userIds An array of user IDs to fetch readings for.
+ * @param date The date string in 'YYYY-MM-DD' format.
+ * @returns A promise that resolves to an array of Reading objects.
+ */
+export const getReadingsForMatesByDate = async (userIds: string[], date: string): Promise<Reading[]> => {
+    if (userIds.length === 0 || !date) return [];
+    try {
+        const readingsCol = collection(db, 'readings');
+        // This query is more efficient as it filters by date AND user IDs.
+        const q = query(
+            readingsCol,
+            where('userId', 'in', userIds),
+            where('date', '==', date)
+        );
+        const querySnapshot = await getDocs(q);
+        const readings: Reading[] = [];
+        querySnapshot.forEach(doc => {
+            readings.push({ id: doc.id, ...doc.data() } as Reading);
+        });
+        return readings;
+    } catch (error) {
+        // This query might require a composite index in Firestore.
+        // If you see an error in the console with a link, click it to create the index.
+        console.error('Error fetching readings for mates on date:', error);
+        return [];
+    }
+}
 
 export const getGroupsForUser = async (userId: string): Promise<Group[]> => {
     if (!userId) return [];
@@ -134,7 +162,6 @@ export const getReadingsForMatesByMonth = async (userIds: string[], year: number
     }
 }
 
-// --- START: NEW FUNCTIONS for Joining a Group ---
 /**
  * Finds a group document based on its unique invite code.
  * @param inviteCode The invite code to search for.
@@ -178,4 +205,3 @@ export const addUserToGroup = async (groupId: string, userId: string) => {
         throw new Error('Could not join the group.');
     }
 };
-// --- END: NEW FUNCTIONS for Joining a Group ---
