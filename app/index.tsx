@@ -1,9 +1,10 @@
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Button, Dimensions, Keyboard, Modal, Platform, Pressable, StyleSheet, Text, TextInput, TouchableWithoutFeedback, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Alert, Button, Dimensions, Keyboard, Modal, Platform, Pressable, StyleSheet, Text, TextInput, TouchableWithoutFeedback, View } from 'react-native';
 import { Drawer } from 'react-native-drawer-layout';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import PagerView from 'react-native-pager-view';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { addReading, getGroupMates, getGroupsForUser, getReadingsForMatesByMonth, getUserProfile } from '../api/firebase';
 import CalendarHeader from '../components/Calendar/CalendarHeader';
@@ -18,6 +19,7 @@ export default function CalendarScreen() {
   const [date, setDate] = useState(new Date());
   const { user, signOut } = useAuth();
   const router = useRouter();
+  const pagerRef = useRef<PagerView>(null);
 
   const [mates, setMates] = useState<Mate[]>([]);
   const [eventList, setEventList] = useState<Reading[]>([]);
@@ -46,41 +48,23 @@ export default function CalendarScreen() {
       const groups = await getGroupsForUser(user.uid);
       setUserGroups(groups);
       
-      if (groups && groups.length > 0) {
-          const currentGroupId = selectedGroupId || groups[0].id;
-          if (!selectedGroupId) {
-              setSelectedGroupId(currentGroupId);
-          }
-          
-          const groupMates = await getGroupMates(currentGroupId);
-          
-          // --- START: NEW COLOR ASSIGNMENT LOGIC ---
-          const currentGroup = groups.find(g => g.id === currentGroupId);
-          // The mateIds array represents the join order
+      if (selectedGroupId) {
+          // --- A specific group is selected ---
+          const groupMates = await getGroupMates(selectedGroupId);
+          const currentGroup = groups.find(g => g.id === selectedGroupId);
           const mateIdsInOrder = currentGroup ? currentGroup.mateIds : [];
           
           const matesWithColors = groupMates.map(mate => {
-            let color = getColorForUser(mate.id); // Assign a fallback color by default
-
-            if (mate.id === user.uid) {
-                // The person viewing the calendar is always the primary color.
-                color = USER_COLORS[0];
-            } else if (mateIdsInOrder.length > 0) {
-                // For other mates, determine their color based on join order.
-                // First, remove the current user to get the correct index for others.
+            let color = getColorForUser(mate.id);
+            if (mate.id === user.uid) { color = USER_COLORS[0]; }
+            else if (mateIdsInOrder.length > 0) {
                 const otherMatesOrder = mateIdsInOrder.filter(id => id !== user.uid);
                 const joinIndex = otherMatesOrder.indexOf(mate.id);
-                
-                if (joinIndex !== -1) {
-                    // Assign a color from the rest of the palette.
-                    // The +1 skips the first color, which is reserved for the viewing user.
-                    color = USER_COLORS[(joinIndex + 1) % USER_COLORS.length];
-                }
+                if (joinIndex !== -1) { color = USER_COLORS[(joinIndex + 1) % USER_COLORS.length]; }
             }
             return { ...mate, color };
           });
           setMates(matesWithColors);
-          // --- END: NEW COLOR ASSIGNMENT LOGIC ---
 
           if (matesWithColors.length > 0) {
               const mateIds = matesWithColors.map(m => m.id);
@@ -88,12 +72,12 @@ export default function CalendarScreen() {
               setEventList(readings);
           }
       } else {
-          // Logic for solo users
+          // --- "My Calendar" is selected, or it's the default view for a solo user ---
           const ownReadings = await getReadingsForMatesByMonth([user.uid], date.getFullYear(), date.getMonth());
           setEventList(ownReadings);
+
           const ownProfile = await getUserProfile(user.uid);
           if (ownProfile) {
-              // A solo user also gets the primary color.
               const selfWithColor = { ...ownProfile, color: USER_COLORS[0] };
               setMates([selfWithColor]);
           } else {
@@ -105,13 +89,21 @@ export default function CalendarScreen() {
   };
 
   useEffect(() => {
-    // If the user has groups but none are selected yet, default to the first one.
-    // Otherwise, selectedGroupId will remain null, correctly showing "My Calendar".
-    if (user && userGroups.length > 0 && !selectedGroupId) {
-        setSelectedGroupId(userGroups[0].id);
-    }
     fetchAllData();
   }, [date, user, selectedGroupId]);
+
+  const handleDateChange = (newDate: Date) => {
+    const monthDiff = (newDate.getFullYear() - date.getFullYear()) * 12 + (newDate.getMonth() - date.getMonth());
+    if (monthDiff === 1) pagerRef.current?.setPage(2);
+    else if (monthDiff === -1) pagerRef.current?.setPage(0);
+    else setDate(newDate);
+  };
+
+  const onPageSelected = (e: { nativeEvent: { position: number } }) => {
+    if (e.nativeEvent.position === 1) return; 
+    const newDate = new Date(date.getFullYear(), date.getMonth() + (e.nativeEvent.position === 0 ? -1 : 1), 1);
+    setDate(newDate);
+  };
 
   const handleDayPress = (pressedDate: Date) => {
     const dateString = pressedDate.toISOString().slice(0, 10);
@@ -153,9 +145,11 @@ export default function CalendarScreen() {
     setIsLogReadingModalVisible(true);
   };
 
-  if (isLoading) {
-    return <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#1976d2" /></View>;
-  }
+  const monthsToDisplay = [
+    new Date(date.getFullYear(), date.getMonth() - 1, 1),
+    date,
+    new Date(date.getFullYear(), date.getMonth() + 1, 1),
+  ];
   
   return (
     <GestureHandlerRootView style={{flex: 1}}>
@@ -184,18 +178,30 @@ export default function CalendarScreen() {
         <SafeAreaView style={styles.container} edges={['top']}>
             <CalendarHeader
                 date={date}
-                onDateChange={setDate}
+                onDateChange={handleDateChange}
                 onLogout={handleLogout}
                 onMenuPress={() => setIsDrawerOpen(true)}
             />
-            <MonthView
-                events={eventList}
-                mates={mates} 
-                month={date.getMonth()}
-                day={date.getDate()}
-                year={date.getFullYear()}
-                onDayPress={handleDayPress}
-            />
+            <PagerView
+              ref={pagerRef}
+              style={styles.pagerView}
+              initialPage={1}
+              onPageSelected={onPageSelected}
+              key={date.toISOString()}
+            >
+              {monthsToDisplay.map((monthDate, index) => (
+                <View key={index} style={styles.page}>
+                  <MonthView
+                    events={eventList}
+                    mates={mates} 
+                    month={monthDate.getMonth()}
+                    day={monthDate.getDate()}
+                    year={monthDate.getFullYear()}
+                    onDayPress={handleDayPress}
+                  />
+                </View>
+              ))}
+            </PagerView>
             
             <Pressable style={styles.fab} onPress={openLogReadingModal}>
                 <Text style={styles.fabIcon}>+</Text>
@@ -240,6 +246,8 @@ export default function CalendarScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#fff' },
+    pagerView: { flex: 1 },
+    page: { flex: 1 },
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     fab: { position: 'absolute', right: 25, bottom: 25, width: 60, height: 60, borderRadius: 30, backgroundColor: '#1976d2', justifyContent: 'center', alignItems: 'center', elevation: 8 },
     fabIcon: { fontSize: 30, color: 'white', lineHeight: 32 },
