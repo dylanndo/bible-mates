@@ -7,6 +7,7 @@ import PagerView from 'react-native-pager-view';
 import { addReading, getGroupMates, getGroupsForUser, getReadingsForMatesByDateRange, getUserProfile } from '../../api/firebase';
 import CalendarHeader from '../../components/Calendar/CalendarHeader';
 import { useAuth } from '../../contexts/AuthContext';
+import { useCalendar } from '../../contexts/CalendarContext';
 import { Mate, Reading } from '../../types';
 import { getColorForUser, USER_COLORS } from '../../utils/colorHelper';
 
@@ -45,6 +46,8 @@ export default function DayViewScreen() {
     const router = useRouter();
     const pagerRef = useRef<PagerView>(null);
     
+    const { setViewedDate: setSharedDate } = useCalendar();
+
     const [viewedDate, setViewedDate] = useState<Date | null>(null);
     const [readings, setReadings] = useState<Reading[]>([]);
     const [mates, setMates] = useState<Mate[]>([]);
@@ -63,6 +66,7 @@ export default function DayViewScreen() {
             
             const initialDate = new Date(date + 'T00:00:00');
             setViewedDate(initialDate);
+            setSharedDate(initialDate);
 
             const userGroups = await getGroupsForUser(user.uid);
             let mateIds = [user.uid]
@@ -106,9 +110,10 @@ export default function DayViewScreen() {
         };
         fetchAndSetData();
         pagerRef.current?.setPageWithoutAnimation(1);
-    }, [date, user]);
+    }, [date, user, setSharedDate]);
 
     const handleDateChange = (newDate: Date) => {
+        setSharedDate(newDate);
         const dateString = newDate.toISOString().slice(0, 10);
         router.replace(`/day/${dateString}`);
     };
@@ -160,6 +165,9 @@ export default function DayViewScreen() {
     };
 
     const handleBackPress = () => {
+        if (viewedDate) {
+            setSharedDate(viewedDate);
+        }
         if (router.canGoBack()) {
             router.back();
         } else {

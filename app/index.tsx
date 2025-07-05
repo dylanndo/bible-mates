@@ -12,11 +12,12 @@ import MonthView from '../components/Calendar/MonthView';
 import JoinGroupModal from '../components/JoinGroupModal';
 import SideMenu from '../components/SideMenu';
 import { useAuth } from '../contexts/AuthContext';
+import { useCalendar } from '../contexts/CalendarContext';
 import { Group, Mate, Reading } from '../types';
 import { USER_COLORS, getColorForUser } from '../utils/colorHelper';
 
 export default function CalendarScreen() {
-  const [date, setDate] = useState(new Date());
+  const { viewedDate, setViewedDate } = useCalendar();
   const { user, signOut } = useAuth();
   const router = useRouter();
   const pagerRef = useRef<PagerView>(null);
@@ -68,12 +69,12 @@ export default function CalendarScreen() {
 
           if (matesWithColors.length > 0) {
               const mateIds = matesWithColors.map(m => m.id);
-              const readings = await getReadingsForMatesByMonth(mateIds, date.getFullYear(), date.getMonth());
+              const readings = await getReadingsForMatesByMonth(mateIds, viewedDate.getFullYear(), viewedDate.getMonth());
               setEventList(readings);
           }
       } else {
           // --- "My Calendar" is selected, or it's the default view for a solo user ---
-          const ownReadings = await getReadingsForMatesByMonth([user.uid], date.getFullYear(), date.getMonth());
+          const ownReadings = await getReadingsForMatesByMonth([user.uid], viewedDate.getFullYear(), viewedDate.getMonth());
           setEventList(ownReadings);
 
           const ownProfile = await getUserProfile(user.uid);
@@ -90,19 +91,19 @@ export default function CalendarScreen() {
 
   useEffect(() => {
     fetchAllData();
-  }, [date, user, selectedGroupId]);
+  }, [viewedDate, user, selectedGroupId]);
 
   const handleDateChange = (newDate: Date) => {
-    const monthDiff = (newDate.getFullYear() - date.getFullYear()) * 12 + (newDate.getMonth() - date.getMonth());
+    const monthDiff = (newDate.getFullYear() - viewedDate.getFullYear()) * 12 + (newDate.getMonth() - viewedDate.getMonth());
     if (monthDiff === 1) pagerRef.current?.setPage(2);
     else if (monthDiff === -1) pagerRef.current?.setPage(0);
-    else setDate(newDate);
+    else setViewedDate(newDate);
   };
 
   const onPageSelected = (e: { nativeEvent: { position: number } }) => {
     if (e.nativeEvent.position === 1) return; 
-    const newDate = new Date(date.getFullYear(), date.getMonth() + (e.nativeEvent.position === 0 ? -1 : 1), 1);
-    setDate(newDate);
+    const newDate = new Date(viewedDate.getFullYear(), viewedDate.getMonth() + (e.nativeEvent.position === 0 ? -1 : 1), 1);
+    setViewedDate(newDate);
   };
 
   const handleDayPress = (pressedDate: Date) => {
@@ -125,7 +126,7 @@ export default function CalendarScreen() {
         userId: user.uid, firstName: userProfile.firstName, book, chapter, notes, date: logDate.toISOString().slice(0, 10),
       };
       await addReading(newReading);
-      if (logDate.getMonth() === date.getMonth() && logDate.getFullYear() === date.getFullYear()) {
+      if (logDate.getMonth() === viewedDate.getMonth() && logDate.getFullYear() === viewedDate.getFullYear()) {
         setEventList(prev => [...prev, { ...newReading, id: Math.random().toString() }]);
       }
       setBook(''); setChapter(''); setNotes(''); setIsLogReadingModalVisible(false);
@@ -146,9 +147,9 @@ export default function CalendarScreen() {
   };
 
   const monthsToDisplay = [
-    new Date(date.getFullYear(), date.getMonth() - 1, 1),
-    date,
-    new Date(date.getFullYear(), date.getMonth() + 1, 1),
+    new Date(viewedDate.getFullYear(), viewedDate.getMonth() - 1, 1),
+    viewedDate,
+    new Date(viewedDate.getFullYear(), viewedDate.getMonth() + 1, 1),
   ];
   
   return (
@@ -177,7 +178,7 @@ export default function CalendarScreen() {
       >
         <SafeAreaView style={styles.container} edges={['top']}>
             <CalendarHeader
-                date={date}
+                date={viewedDate}
                 onDateChange={handleDateChange}
                 onLogout={handleLogout}
                 onMenuPress={() => setIsDrawerOpen(true)}
@@ -187,7 +188,7 @@ export default function CalendarScreen() {
               style={styles.pagerView}
               initialPage={1}
               onPageSelected={onPageSelected}
-              key={date.toISOString()}
+              key={viewedDate.toISOString()}
             >
               {monthsToDisplay.map((monthDate, index) => (
                 <View key={index} style={styles.page}>
