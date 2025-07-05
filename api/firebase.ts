@@ -135,11 +135,19 @@ export const getGroupMates = async (groupId: string): Promise<Mate[]> => {
     }
 }
 
+/**
+ * Fetches all readings for a list of users within a 3-month window for smooth swiping.
+ * @param userIds An array of user IDs.
+ * @param year The full year of the *central* month.
+ * @param month The month (0-indexed) of the *central* month.
+ * @returns A promise that resolves to an array of Reading objects for the 3-month window.
+ */
 export const getReadingsForMatesByMonth = async (userIds: string[], year: number, month: number): Promise<Reading[]> => {
     if (userIds.length === 0) return [];
     try {
-        const startDate = new Date(year, month, 1).toISOString().slice(0, 10);
-        const endDate = new Date(year, month + 1, 0).toISOString().slice(0, 10);
+        // Fetch data for a 3-month window (previous, current, next)
+        const startDate = new Date(year, month - 1, 1).toISOString().slice(0, 10);
+        const endDate = new Date(year, month + 2, 0).toISOString().slice(0, 10);
 
         const readingsCol = collection(db, 'readings');
         const q = query(
@@ -158,6 +166,38 @@ export const getReadingsForMatesByMonth = async (userIds: string[], year: number
 
     } catch (error) {
         console.error('Error fetching readings for mates:', error);
+        return [];
+    }
+}
+
+/**
+ * Fetches readings for a list of users within a specific date range.
+ * @param userIds An array of user IDs.
+ * @param startDate The start date of the range.
+ * @param endDate The end date of the range.
+ * @returns A promise that resolves to an array of Reading objects.
+ */
+export const getReadingsForMatesByDateRange = async (userIds: string[], startDate: Date, endDate: Date): Promise<Reading[]> => {
+    if (userIds.length === 0) return [];
+    try {
+        const startDateString = startDate.toISOString().slice(0, 10);
+        const endDateString = endDate.toISOString().slice(0, 10);
+
+        const readingsCol = collection(db, 'readings');
+        const q = query(
+            readingsCol,
+            where('userId', 'in', userIds),
+            where('date', '>=', startDateString),
+            where('date', '<=', endDateString)
+        );
+        const querySnapshot = await getDocs(q);
+        const readings: Reading[] = [];
+        querySnapshot.forEach(doc => {
+            readings.push({ id: doc.id, ...doc.data() } as Reading);
+        });
+        return readings;
+    } catch (error) {
+        console.error('Error fetching readings for date range:', error);
         return [];
     }
 }

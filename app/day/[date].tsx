@@ -1,24 +1,56 @@
 import { Feather } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Button, Keyboard, Modal, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableWithoutFeedback, View } from 'react-native';
-import { addReading, getGroupMates, getGroupsForUser, getReadingsForMatesByDate, getUserProfile } from '../../api/firebase';
+import PagerView from 'react-native-pager-view';
+import { addReading, getGroupMates, getGroupsForUser, getReadingsForMatesByDateRange, getUserProfile } from '../../api/firebase';
 import CalendarHeader from '../../components/Calendar/CalendarHeader';
 import { useAuth } from '../../contexts/AuthContext';
+import { useCalendar } from '../../contexts/CalendarContext';
 import { Mate, Reading } from '../../types';
 import { getColorForUser, USER_COLORS } from '../../utils/colorHelper';
 
-const daysOfWeek = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
-
+const DayViewContent = ({ date, readings, mates }: { date: Date, readings: Reading[], mates: Mate[] }) => {
+    const daysOfWeek = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+    const isToday = new Date().toDateString() === date.toDateString();
+    const dateString = date.toISOString().slice(0,10);
+    return (
+        <View style={styles.pageContainer}>
+            <View style={styles.dayHeader}>
+                <Text style={styles.dayNameText}>{daysOfWeek[date.getDay()]}</Text>
+                <View style={isToday ? styles.todayCircle : styles.dateCircle}>
+                    <Text style={isToday ? styles.todayDateText : styles.dateText}>{date.getDate()}</Text>
+                </View>
+            </View>
+            <ScrollView contentContainerStyle={styles.scrollContentContainer}>
+                {mates.map(mate => {
+                    const readingForMate = readings.find(r => r.userId === mate.id && r.date === dateString);
+                    const hasRead = !!readingForMate;
+                    return (
+                        <View key={mate.id} style={[styles.eventBlock, { backgroundColor: hasRead ? mate.color || '#e3f2fd' : '#fafafa' }, !hasRead && styles.eventBlockUnread]}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                <Text style={[styles.eventTextName, !hasRead && styles.eventTextUnread]}>{mate.firstName} {mate.lastName}</Text>
+                                {hasRead && <Feather name="check-circle" size={18} color="green" style={{ marginLeft: 8 }} />}
+                            </View>
+                            {hasRead && <Text style={styles.eventTextReading}>Read: {readingForMate.book} {readingForMate.chapter}</Text>}
+                        </View>
+                    )
+                })}
+            </ScrollView>
+        </View>
+    );
+};
 export default function DayViewScreen() {
     const { date } = useLocalSearchParams<{ date: string }>();
     const router = useRouter();
+    const pagerRef = useRef<PagerView>(null);
     
+    const { setViewedDate: setSharedDate } = useCalendar();
+
     const [viewedDate, setViewedDate] = useState<Date | null>(null);
     const [readings, setReadings] = useState<Reading[]>([]);
     const [mates, setMates] = useState<Mate[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
     
     const { user } = useAuth();
     const [modalVisible, setModalVisible] = useState(false);
@@ -31,12 +63,13 @@ export default function DayViewScreen() {
     useEffect(() => {
         const fetchAndSetData = async () => {
             if (!date || !user) return;
-            setIsLoading(true);
             
             const initialDate = new Date(date + 'T00:00:00');
             setViewedDate(initialDate);
+            setSharedDate(initialDate);
 
             const userGroups = await getGroupsForUser(user.uid);
+            let mateIds = [user.uid]
             if (userGroups && userGroups.length > 0) {
                 const groupId = userGroups[0].id;
                 const groupMates = await getGroupMates(groupId);
@@ -59,9 +92,7 @@ export default function DayViewScreen() {
                 setMates(matesWithColors);
 
                 if (groupMates.length > 0) {
-                    const mateIds = groupMates.map(m => m.id);
-                    const fetchedReadings = await getReadingsForMatesByDate(mateIds, date);
-                    setReadings(fetchedReadings);
+                    mateIds = groupMates.map(m => m.id);
                 }
             } else {
                 const ownProfile = await getUserProfile(user.uid);
@@ -69,16 +100,41 @@ export default function DayViewScreen() {
                     setMates([{ ... ownProfile, color: USER_COLORS[0]}]);
                 }
             }
+            const startDate = new Date(initialDate);
+            startDate.setDate(startDate.getDate() - 3);
+            const endDate = new Date(initialDate);
+            endDate.setDate(endDate.getDate() + 3);
             
-            setIsLoading(false);
+            const fetchedReadings = await getReadingsForMatesByDateRange(mateIds, startDate, endDate);
+            setReadings(fetchedReadings);
         };
         fetchAndSetData();
-    }, [date, user]);
+        pagerRef.current?.setPageWithoutAnimation(1);
+    }, [date, user, setSharedDate]);
 
-    const handleDateChangeInHeader = (newDate: Date) => {
-        const newDateString = newDate.toISOString().slice(0, 10);
-        router.replace(`/day/${newDateString}`);
+    const handleDateChange = (newDate: Date) => {
+        setSharedDate(newDate);
+        const dateString = newDate.toISOString().slice(0, 10);
+        router.replace(`/day/${dateString}`);
     };
+
+    const onPageSelected = (e: { nativeEvent: { position: number } }) => {
+        if (!viewedDate || e.nativeEvent.position === 1) return;
+        let newDate = new Date(viewedDate);
+        if (e.nativeEvent.position === 0) newDate.setDate(newDate.getDate() - 1);
+        else if (e.nativeEvent.position === 2) newDate.setDate(newDate.getDate() + 1);
+        handleDateChange(newDate);
+    };
+
+    if (!viewedDate) {
+        return <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#1976d2" /></View>;
+    }
+
+    const daysToDisplay = [
+        new Date(new Date(viewedDate).setDate(viewedDate.getDate() - 1)),
+        viewedDate,
+        new Date(new Date(viewedDate).setDate(viewedDate.getDate() + 1)),
+    ];
 
     const handleAddReading = async () => {
         if (!book || !chapter) { Alert.alert('Missing Info', 'Please provide a book and chapter.'); return; }
@@ -109,6 +165,9 @@ export default function DayViewScreen() {
     };
 
     const handleBackPress = () => {
+        if (viewedDate) {
+            setSharedDate(viewedDate);
+        }
         if (router.canGoBack()) {
             router.back();
         } else {
@@ -126,19 +185,26 @@ export default function DayViewScreen() {
         <SafeAreaView style={styles.container}>
             <CalendarHeader
                 date={viewedDate}
-                onDateChange={handleDateChangeInHeader}
+                onDateChange={handleDateChange}
                 showBackButton={true}
                 onBackPress={handleBackPress}
             />
 
-            <View style={styles.dayHeader}>
-                <Text style={styles.dayNameText}>{daysOfWeek[viewedDate.getDay()]}</Text>
-                <View style={isToday ? styles.todayCircle : styles.dateCircle}>
-                    <Text style={isToday ? styles.todayDateText : styles.dateText}>{viewedDate.getDate()}</Text>
-                </View>
-            </View>
+            <PagerView
+                ref={pagerRef}
+                style={styles.pagerView}
+                initialPage={1}
+                onPageSelected={onPageSelected}
+                key={viewedDate.toISOString()}
+            >
+                {daysToDisplay.map((d, index) => (
+                    <View key={index}>
+                        <DayViewContent date={d} readings={readings} mates={mates} />
+                    </View>
+                ))}
+            </PagerView>
 
-            <ScrollView contentContainerStyle={styles.scrollContentContainer}>
+            {/* <ScrollView contentContainerStyle={styles.scrollContentContainer}>
                 {isLoading ? (
                     <ActivityIndicator size="large" color="#1976d2" style={{ marginTop: 50 }} />
                 ) : (
@@ -162,7 +228,7 @@ export default function DayViewScreen() {
                         )
                     })
                 )}
-            </ScrollView>
+            </ScrollView> */}
 
             <Pressable style={styles.fab} onPress={openModal}>
                 <Text style={styles.fabIcon}>+</Text>
@@ -200,6 +266,8 @@ export default function DayViewScreen() {
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#fff' },
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    pagerView: { flex: 1 },
+    pageContainer: { flex: 1 },
     dayHeader: { paddingVertical: 10, alignItems: 'center', borderBottomWidth: 1, borderColor: '#eee' },
     dayNameText: { fontSize: 14, fontWeight: '500', color: '#666', marginBottom: 8 },
     dateCircle: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
