@@ -12,6 +12,7 @@ import JoinGroupModal from '../components/JoinGroupModal';
 import SideMenu from '../components/SideMenu';
 import { useAuth } from '../contexts/AuthContext';
 import { Group, Mate, Reading } from '../types';
+import { USER_COLORS, getColorForUser } from '../utils/colorHelper';
 
 export default function CalendarScreen() {
   const [date, setDate] = useState(new Date());
@@ -45,24 +46,56 @@ export default function CalendarScreen() {
       const groups = await getGroupsForUser(user.uid);
       setUserGroups(groups);
       
-      if (selectedGroupId) {
-          // --- A specific group is selected ---
-          const groupMates = await getGroupMates(selectedGroupId);
-          setMates(groupMates);
+      if (groups && groups.length > 0) {
+          const currentGroupId = selectedGroupId || groups[0].id;
+          if (!selectedGroupId) {
+              setSelectedGroupId(currentGroupId);
+          }
+          
+          const groupMates = await getGroupMates(currentGroupId);
+          
+          // --- START: NEW COLOR ASSIGNMENT LOGIC ---
+          const currentGroup = groups.find(g => g.id === currentGroupId);
+          // The mateIds array represents the join order
+          const mateIdsInOrder = currentGroup ? currentGroup.mateIds : [];
+          
+          const matesWithColors = groupMates.map(mate => {
+            let color = getColorForUser(mate.id); // Assign a fallback color by default
 
-          if (groupMates.length > 0) {
-              const mateIds = groupMates.map(m => m.id);
+            if (mate.id === user.uid) {
+                // The person viewing the calendar is always the primary color.
+                color = USER_COLORS[0];
+            } else if (mateIdsInOrder.length > 0) {
+                // For other mates, determine their color based on join order.
+                // First, remove the current user to get the correct index for others.
+                const otherMatesOrder = mateIdsInOrder.filter(id => id !== user.uid);
+                const joinIndex = otherMatesOrder.indexOf(mate.id);
+                
+                if (joinIndex !== -1) {
+                    // Assign a color from the rest of the palette.
+                    // The +1 skips the first color, which is reserved for the viewing user.
+                    color = USER_COLORS[(joinIndex + 1) % USER_COLORS.length];
+                }
+            }
+            return { ...mate, color };
+          });
+          setMates(matesWithColors);
+          // --- END: NEW COLOR ASSIGNMENT LOGIC ---
+
+          if (matesWithColors.length > 0) {
+              const mateIds = matesWithColors.map(m => m.id);
               const readings = await getReadingsForMatesByMonth(mateIds, date.getFullYear(), date.getMonth());
               setEventList(readings);
           }
       } else {
-          // --- "My Calendar" is selected, or no group is selected by default ---
+          // Logic for solo users
           const ownReadings = await getReadingsForMatesByMonth([user.uid], date.getFullYear(), date.getMonth());
           setEventList(ownReadings);
-
           const ownProfile = await getUserProfile(user.uid);
           if (ownProfile) {
-              setMates([ownProfile]);
+              // A solo user also gets the primary color.
+              const selfWithColor = { ...ownProfile, color: USER_COLORS[0] };
+              setMates([selfWithColor]);
           } else {
               setMates([]);
           }
@@ -72,6 +105,11 @@ export default function CalendarScreen() {
   };
 
   useEffect(() => {
+    // If the user has groups but none are selected yet, default to the first one.
+    // Otherwise, selectedGroupId will remain null, correctly showing "My Calendar".
+    if (user && userGroups.length > 0 && !selectedGroupId) {
+        setSelectedGroupId(userGroups[0].id);
+    }
     fetchAllData();
   }, [date, user, selectedGroupId]);
 

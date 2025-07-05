@@ -13,6 +13,7 @@ export type Mate = {
   firstName: string;
   lastName: string; // Add lastName
   email: string;
+  color: string;
 };
 
 export type Group = {
