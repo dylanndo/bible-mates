@@ -1,106 +1,113 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Mate, Reading } from '../../types';
+import { Streak } from '../../types';
+import { getMonthGrid, isSameDay } from '../../utils/calendarUtils'; // We'll create this new utility file next
 
 type MonthViewProps = {
-  events: Reading[];
-  mates: Mate[]; // Mates array now includes the 'color' property
+  streaks: Streak[];
   month: number;
-  day: number;
   year: number;
   onDayPress: (date: Date) => void;
 };
 
-const daysOfWeek = [
-  'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
-];
+const daysOfWeek = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
-function getMonthDays(year: number, month: number) {
-  const numDays = new Date(year, month + 1, 0).getDate();
-  const days = [];
-  for (let i = 1; i <= numDays; i++) {
-    days.push(new Date(year, month, i));
-  }
-  return days;
-}
-function getPrevMonthDays(year: number, month: number, count: number) {
-  const prevMonth = month === 0 ? 11 : month - 1;
-  const prevYear = month === 0 ? year - 1 : year;
-  const prevMonthDays = new Date(prevYear, prevMonth + 1, 0).getDate();
-  const days = [];
-  for (let i = prevMonthDays - count + 1; i <= prevMonthDays; i++) {
-    days.push(new Date(prevYear, prevMonth, i));
-  }
-  return days;
-}
-function getNextMonthDays(year: number, month: number, count: number) {
-  const nextMonth = month === 11 ? 0 : month + 1;
-  const nextYear = month === 11 ? year + 1 : year;
-  const days = [];
-  for (let i = 1; i <= count; i++) {
-    days.push(new Date(nextYear, nextMonth, i));
-  }
-  return days;
-}
-
-export default function MonthView({ events = [], mates = [], month, day, year, onDayPress }: MonthViewProps) {
-  const days = getMonthDays(year, month);
-  const firstDayOfWeek = days.length > 0 ? days[0].getDay() : 0;
-  const prevMonthDays = getPrevMonthDays(year, month, firstDayOfWeek);
-  let calendarCells = [...prevMonthDays, ...days];
-  const totalCells = 6 * 7;
-  const nextMonthDayCount = totalCells - calendarCells.length;
-  if(nextMonthDayCount > 0){
-    const nextMonthDays = getNextMonthDays(year, month, nextMonthDayCount);
-    calendarCells = [...calendarCells, ...nextMonthDays];
-  }
-  const cellTypes = [
-    ...Array(prevMonthDays.length).fill('prev'),
-    ...Array(days.length).fill('current'),
-    ...Array(nextMonthDayCount > 0 ? nextMonthDayCount : 0).fill('next'),
-  ];
-  const weeks = [];
-  for (let i = 0; i < 6; i++) {
-    weeks.push({
-      days: calendarCells.slice(i * 7, (i + 1) * 7),
-      types: cellTypes.slice(i * 7, (i + 1) * 7),
-    });
-  }
+export default function MonthView({ streaks = [], month, year, onDayPress }: MonthViewProps) {
+  const weeks = useMemo(() => getMonthGrid(year, month), [year, month]);
   
   const today = new Date();
-  const todayYear = today.getFullYear();
-  const todayMonth = today.getMonth();
-  const todayDate = today.getDate();
-  const todayDayOfWeek = today.getDay();
+
+  // A map to store the vertical position (track) of each user's streak for a given week
+  const weeklyTrackAssignments = useMemo(() => {
+    const assignments = new Map<string, Map<string, number>>(); // weekKey -> (userId -> trackIndex)
+    
+    weeks.forEach((week, wIdx) => {
+        const weekKey = `${year}-${month}-${wIdx}`;
+        const weekAssignments = new Map<string, number>();
+        const occupiedTracks = new Set<number>();
+
+        const weekStartDate = week[0].date;
+        const weekEndDate = week[6].date;
+        
+        // Find streaks active in this week
+        const activeStreaks = streaks.filter(s => {
+            const streakStart = new Date(s.startDate + 'T00:00:00');
+            const streakEnd = new Date(s.endDate + 'T00:00:00');
+            return streakStart <= weekEndDate && streakEnd >= weekStartDate;
+        });
+
+        // Assign tracks to each user with an active streak
+        activeStreaks.forEach(streak => {
+            if (!weekAssignments.has(streak.userId)) {
+                let trackIndex = 0;
+                while (occupiedTracks.has(trackIndex)) {
+                    trackIndex++;
+                }
+                occupiedTracks.add(trackIndex);
+                weekAssignments.set(streak.userId, trackIndex);
+            }
+        });
+        assignments.set(weekKey, weekAssignments);
+    });
+
+    return assignments;
+  }, [weeks, streaks, year, month]);
 
   return (
     <View style={styles.container}>
-      <View style={styles.row}>
+      <View style={styles.headerRow}>
         {daysOfWeek.map((dayName, idx) => (
-            <Text
-            key={idx}
-            style={[
-                styles.headerCell,
-                idx === todayDayOfWeek && styles.currentDayOfWeekHeader,
-            ]}
-            >
-            {dayName[0]}
-            </Text>
+            <Text key={idx} style={styles.headerCell}>{dayName}</Text>
         ))}
-        </View>
+      </View>
       <View style={styles.grid}>
         {weeks.map((week, wIdx) => (
-          <View key={wIdx} style={[styles.weekRow, wIdx === weeks.length - 1 && { borderBottomWidth: 0 }]}>
-            {week.days.map((date, dIdx) => {
-              const cellType = week.types[dIdx];
-              const isToday =
-                date.getFullYear() === todayYear &&
-                date.getMonth() === todayMonth &&
-                date.getDate() === todayDate;
-              const isCurrentMonth = cellType === 'current';
-              const dayEvents = events.filter(e => e.date === date.toISOString().slice(0, 10));
-              const maxEventsToShow = 4;
-              const extraCount = dayEvents.length - maxEventsToShow;
+          <View key={wIdx} style={styles.weekRow}>
+            {/* Render Streak Blocks */}
+            <View style={styles.streakLayer}>
+              {streaks.map(streak => {
+                const streakStart = new Date(streak.startDate + 'T00:00:00');
+                const streakEnd = new Date(streak.endDate + 'T00:00:00');
+
+                const weekStartDate = week[0].date;
+                const weekEndDate = week[6].date;
+
+                // Check if streak is in this week
+                if (streakStart > weekEndDate || streakEnd < weekStartDate) {
+                  return null;
+                }
+
+                const startDayIndex = streakStart < weekStartDate ? 0 : streakStart.getDay();
+                const endDayIndex = streakEnd > weekEndDate ? 6 : streakEnd.getDay();
+
+                const weekKey = `${year}-${month}-${wIdx}`;
+                const trackIndex = weeklyTrackAssignments.get(weekKey)?.get(streak.userId) ?? 0;
+                
+                const dayWidth = 100 / 7; // as a percentage
+
+                return (
+                  <View
+                    key={streak.id + `-${wIdx}`}
+                    style={[
+                      styles.streakBlock,
+                      {
+                        backgroundColor: streak.color,
+                        left: `${startDayIndex * dayWidth}%`,
+                        width: `${(endDayIndex - startDayIndex + 1) * dayWidth}%`,
+                        top: 25 + trackIndex * 15, // Position streaks vertically
+                      },
+                    ]}
+                  >
+                    <Text style={styles.streakText} numberOfLines={1}>{streak.firstName}</Text>
+                  </View>
+                );
+              })}
+            </View>
+
+            {/* Render Day Cells */}
+            {week.map(({ date, type }, dIdx) => {
+              const isCurrentMonth = type === 'current';
+              const isToday = isSameDay(date, today);
 
               return (
                 <Pressable
@@ -108,42 +115,17 @@ export default function MonthView({ events = [], mates = [], month, day, year, o
                   style={styles.dayCell}
                   onPress={() => onDayPress(date)}
                 >
-                  <View style={styles.dateNumberWrapper}>
-                    {isToday && isCurrentMonth ? (
-                      <View style={styles.todayCircle}>
-                        <Text style={styles.todayText}>{date.getDate()}</Text>
-                      </View>
-                    ) : (
-                      <Text
-                        style={[
-                          styles.dateText,
-                          !isCurrentMonth && styles.outOfMonthDateText,
-                        ]}
-                      >
-                        {date.getDate()}
-                      </Text>
-                    )}
+                  <View style={[styles.dateNumberWrapper, isToday && styles.todayCircle]}>
+                    <Text
+                      style={[
+                        styles.dateText,
+                        !isCurrentMonth && styles.outOfMonthDateText,
+                        isToday && styles.todayText,
+                      ]}
+                    >
+                      {date.getDate()}
+                    </Text>
                   </View>
-                  
-                  <View style={styles.eventsContainer}>
-                    {dayEvents.slice(0, maxEventsToShow).map(event => {
-                      // Find the mate corresponding to this event to get their color.
-                      const mate = mates.find(m => m.id === event.userId);
-                      // Use the mate's color, or a fallback color if not found.
-                      const eventColor = mate?.color || '#e0e0e0';
-
-                      return (
-                        <View key={event.id} style={[styles.eventBlock, { backgroundColor: eventColor }]}>
-                          <Text style={styles.eventText} numberOfLines={1}>
-                            {event.firstName}
-                          </Text>
-                        </View>
-                      );
-                    })}
-                  </View>
-                  {extraCount > 0 && (
-                    <Text style={styles.ellipsis}>...</Text>
-                  )}
                 </Pressable>
               );
             })}
@@ -156,7 +138,7 @@ export default function MonthView({ events = [], mates = [], month, day, year, o
 
 const styles = StyleSheet.create({
   container: { flex: 1, flexDirection: 'column', backgroundColor: '#fff' },
-  row: { flexDirection: 'row', height: 40, borderBottomWidth: 1, borderColor: '#e0e0e0' },
+  headerRow: { flexDirection: 'row', height: 40, borderBottomWidth: 1, borderColor: '#e0e0e0' },
   headerCell: { flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '600', lineHeight: 40, color: '#666' },
   currentDayOfWeekHeader: { color: '#1976d2' },
   grid: { flex: 1, flexDirection: 'column' },
@@ -196,29 +178,24 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   outOfMonthDateText: { color: '#bbb' },
-  eventsContainer: {
-    flex: 1,
-    width: '100%',
+  streakLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1, // Streaks render behind day numbers
   },
-  eventBlock: {
+  streakBlock: {
+    position: 'absolute',
+    height: 14,
     borderRadius: 3,
+    justifyContent: 'center',
     paddingHorizontal: 4,
-    paddingTop: 0.5,
-    paddingBottom: 0.75,
-    marginTop: 0.75,
-    marginBottom: 1,
-    width: '95%',
-    alignSelf: 'stretch',
   },
-  
-  eventText: {
+  streakText: {
     fontSize: 10,
     color: '#333',
     fontWeight: '600',
-  },
-  ellipsis: {
-    fontSize: 10,
-    color: '#888',
-    alignSelf: 'center',
   },
 });
