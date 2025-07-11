@@ -116,7 +116,7 @@ export default function MonthView({ streaks = [], month, year, onDayPress }: Mon
                         backgroundColor: streak.color,
                         left: `${leftPercentage}%`,
                         width: `${widthPercentage}%`,
-                        top: 25 + trackIndex * 15, // Position streaks vertically
+                        top: 28 + trackIndex * 15, // Position streaks vertically
                       },
                     ]}
                   >
