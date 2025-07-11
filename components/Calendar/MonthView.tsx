@@ -10,6 +10,14 @@ type MonthViewProps = {
   onDayPress: (date: Date) => void;
 };
 
+// Represents a piece of a streak that is rendered in a single week
+type StreakSegment = {
+  streak: Streak;
+  trackIndex: number;
+  startDayIndex: number;
+  endDayIndex: number;
+};
+
 const daysOfWeek = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 export default function MonthView({ streaks = [], month, year, onDayPress }: MonthViewProps) {
@@ -17,51 +25,74 @@ export default function MonthView({ streaks = [], month, year, onDayPress }: Mon
   
   const today = new Date();
 
-  // A map to store the vertical position (track) of each user's streak for a given week
-  const weeklyTrackAssignments = useMemo(() => {
-    const assignments = new Map<string, Map<string, number>>(); // weekKey -> (userId -> trackIndex)
-    
-    weeks.forEach((week, wIdx) => {
-        const weekKey = `${year}-${month}-${wIdx}`;
-        const weekAssignments = new Map<string, number>();
-        const occupiedTracks = new Set<number>();
+  const weeklyLayouts = useMemo(() => {
+    const layouts = new Map<number, StreakSegment[]>();
 
-        const weekStartDate = week[0].date;
-        const weekEndDate = week[6].date;
-        
-        // Find streaks active in this week
-        const activeStreaks = streaks.filter(s => {
-            const streakStart = new Date(s.startDate + 'T00:00:00');
-            const streakEnd = new Date(s.endDate + 'T00:00:00');
-            return streakStart <= weekEndDate && streakEnd >= weekStartDate;
-        });
-
-        // Sort streaks to determine vertical order.
-        // Longest streaks are prioritized (higher `span`).
-        // For streaks of the same length, the one that started earlier comes first.
-        activeStreaks.sort((a, b) => {
-          if (b.span !== a.span) {
-            return b.span - a.span; // Sort by span descending
-          }
-          return a.startDate.localeCompare(b.startDate); // Then by start date ascending
-        });
-
-        // Now assign the sorted streaks to the first available vertical track
-        activeStreaks.forEach(streak => {
-            if (!weekAssignments.has(streak.userId)) {
-                let trackIndex = 0;
-                while (occupiedTracks.has(trackIndex)) {
-                    trackIndex++;
-                }
-                occupiedTracks.add(trackIndex);
-                weekAssignments.set(streak.userId, trackIndex);
-            }
-        });
-        assignments.set(weekKey, weekAssignments);
+    // Sort all streaks by priority just once
+    const sortedStreaks = [...streaks].sort((a, b) => {
+      if (b.span !== a.span) {
+        return b.span - a.span; // Longer streaks first
+      }
+      return a.startDate.localeCompare(b.startDate); // Then by start date
     });
 
-    return assignments;
-  }, [weeks, streaks, year, month]);
+    weeks.forEach((week, wIdx) => {
+      // A 2D array to keep track of occupied slots for the week
+      // e.g., weekTracks[dayIndex][trackIndex]
+      const weekTracks: (string | null)[][] = Array(7).fill(null).map(() => []);
+      const segmentsForWeek: StreakSegment[] = [];
+
+      const weekStartDate = week[0].date;
+      const weekEndDate = week[6].date;
+
+      sortedStreaks.forEach(streak => {
+        const streakStart = new Date(streak.startDate + 'T00:00:00');
+        const streakEnd = new Date(streak.endDate + 'T00:00:00');
+
+        // Check if the streak is visible in the current week
+        if (streakStart > weekEndDate || streakEnd < weekStartDate) {
+          return;
+        }
+
+        const startDayIndex = Math.max(0, (streakStart.getTime() - weekStartDate.getTime()) / (1000 * 3600 * 24));
+        const endDayIndex = Math.min(6, (streakEnd.getTime() - weekStartDate.getTime()) / (1000 * 3600 * 24));
+
+        // Find the first available vertical track for this streak's duration
+        let trackIndex = 0;
+        let foundTrack = false;
+        while (!foundTrack) {
+          let isTrackAvailable = true;
+          for (let i = Math.floor(startDayIndex); i <= Math.floor(endDayIndex); i++) {
+            if (weekTracks[i][trackIndex] !== undefined) {
+              isTrackAvailable = false;
+              break;
+            }
+          }
+
+          if (isTrackAvailable) {
+            foundTrack = true;
+          } else {
+            trackIndex++;
+          }
+        }
+        
+        // Occupy the slots for the found track
+        for (let i = Math.floor(startDayIndex); i <= Math.floor(endDayIndex); i++) {
+            weekTracks[i][trackIndex] = streak.userId;
+        }
+        
+        segmentsForWeek.push({
+          streak,
+          trackIndex,
+          startDayIndex: Math.floor(startDayIndex),
+          endDayIndex: Math.floor(endDayIndex)
+        });
+      });
+      layouts.set(wIdx, segmentsForWeek);
+    });
+
+    return layouts;
+  }, [weeks, streaks]);
 
   return (
     <View style={styles.container}>
@@ -73,27 +104,10 @@ export default function MonthView({ streaks = [], month, year, onDayPress }: Mon
       <View style={styles.grid}>
         {weeks.map((week, wIdx) => (
           <View key={wIdx} style={styles.weekRow}>
-            {/* Render Streak Blocks */}
             <View style={styles.streakLayer} pointerEvents="box-none">
-              {streaks.map(streak => {
-                const streakStart = new Date(streak.startDate + 'T00:00:00');
-                const streakEnd = new Date(streak.endDate + 'T00:00:00');
-
-                const weekStartDate = week[0].date;
-                const weekEndDate = week[6].date;
-
-                // Check if streak is in this week
-                if (streakStart > weekEndDate || streakEnd < weekStartDate) {
-                  return null;
-                }
-
-                const startDayIndex = streakStart < weekStartDate ? 0 : streakStart.getDay();
-                const endDayIndex = streakEnd > weekEndDate ? 6 : streakEnd.getDay();
-
-                const weekKey = `${year}-${month}-${wIdx}`;
-                const trackIndex = weeklyTrackAssignments.get(weekKey)?.get(streak.userId) ?? 0;
+              {(weeklyLayouts.get(wIdx) || []).map(({ streak, trackIndex, startDayIndex, endDayIndex }) => {
+                const dayWidth = 100 / 7;
                 
-                const dayWidth = 100 / 7; // as a percentage
                 let leftPercentage = startDayIndex * dayWidth;
                 let widthPercentage = (endDayIndex - startDayIndex + 1) * dayWidth;
                 
