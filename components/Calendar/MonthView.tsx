@@ -74,7 +74,7 @@ export default function MonthView({ streaks = [], month, year, onDayPress }: Mon
         {weeks.map((week, wIdx) => (
           <View key={wIdx} style={styles.weekRow}>
             {/* Render Streak Blocks */}
-            <View style={styles.streakLayer}>
+            <View style={styles.streakLayer} pointerEvents="box-none">
               {streaks.map(streak => {
                 const streakStart = new Date(streak.startDate + 'T00:00:00');
                 const streakEnd = new Date(streak.endDate + 'T00:00:00');
