@@ -13,8 +13,71 @@ import JoinGroupModal from '../components/JoinGroupModal';
 import SideMenu from '../components/SideMenu';
 import { useAuth } from '../contexts/AuthContext';
 import { useCalendar } from '../contexts/CalendarContext';
-import { Group, Mate, Reading } from '../types';
+import { Group, Mate, Reading, Streak } from '../types';
 import { USER_COLORS, getColorForUser } from '../utils/colorHelper';
+
+const processReadingsIntoStreaks = (readings: Reading[], mates: Mate[]): Streak[] => {
+  if (!readings.length || !mates.length) return [];
+
+  const streaks: Streak[] = [];
+  const mateMap = new Map(mates.map(m => [m.id, m]));
+
+  // Group readings by user
+  const readingsByUser = readings.reduce((acc, reading) => {
+    if (!acc[reading.userId]) {
+      acc[reading.userId] = [];
+    }
+    acc[reading.userId].push(reading);
+    return acc;
+  }, {} as Record<string, Reading[]>);
+
+  // Process streaks for each user
+  for (const userId in readingsByUser) {
+    const userReadings = readingsByUser[userId].sort((a, b) => a.date.localeCompare(b.date));
+    if (userReadings.length === 0) continue;
+
+    const mateInfo = mateMap.get(userId);
+    if (!mateInfo) continue;
+
+    let currentStreak: Streak = {
+      id: `${userId}-${userReadings[0].date}`,
+      userId: userId,
+      firstName: mateInfo.firstName,
+      color: mateInfo.color,
+      startDate: userReadings[0].date,
+      endDate: userReadings[0].date,
+      span: 1,
+    };
+
+    for (let i = 1; i < userReadings.length; i++) {
+      const currentDate = new Date(userReadings[i].date + 'T00:00:00');
+      const prevDate = new Date(currentStreak.endDate + 'T00:00:00');
+      
+      const diffTime = currentDate.getTime() - prevDate.getTime();
+      const diffDays = diffTime / (1000 * 3600 * 24);
+
+      if (diffDays === 1) {
+        // Continue the streak
+        currentStreak.endDate = userReadings[i].date;
+        currentStreak.span += 1;
+      } else {
+        // End the current streak and start a new one
+        streaks.push(currentStreak);
+        currentStreak = {
+          id: `${userId}-${userReadings[i].date}`,
+          userId: userId,
+          firstName: mateInfo.firstName,
+          color: mateInfo.color,
+          startDate: userReadings[i].date,
+          endDate: userReadings[i].date,
+          span: 1,
+        };
+      }
+    }
+    streaks.push(currentStreak); // Add the last streak
+  }
+  return streaks;
+};
 
 export default function CalendarScreen() {
   const { viewedDate, setViewedDate } = useCalendar();
@@ -24,6 +87,7 @@ export default function CalendarScreen() {
 
   const [mates, setMates] = useState<Mate[]>([]);
   const [eventList, setEventList] = useState<Reading[]>([]);
+  const [streaks, setStreaks] = useState<Streak[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
   const [userGroups, setUserGroups] = useState<Group[]>([]);
@@ -49,6 +113,9 @@ export default function CalendarScreen() {
       const groups = await getGroupsForUser(user.uid);
       setUserGroups(groups);
       
+      let fetchedMates: Mate[] = [];
+      let fetchedReadings: Reading[] = [];
+
       if (selectedGroupId) {
           // --- A specific group is selected ---
           const groupMates = await getGroupMates(selectedGroupId);
@@ -65,26 +132,27 @@ export default function CalendarScreen() {
             }
             return { ...mate, color };
           });
-          setMates(matesWithColors);
+          fetchedMates = matesWithColors;
 
-          if (matesWithColors.length > 0) {
-              const mateIds = matesWithColors.map(m => m.id);
-              const readings = await getReadingsForMatesByMonth(mateIds, viewedDate.getFullYear(), viewedDate.getMonth());
-              setEventList(readings);
+          if (fetchedMates.length > 0) {
+              const mateIds = fetchedMates.map(m => m.id);
+              fetchedReadings = await getReadingsForMatesByMonth(mateIds, viewedDate.getFullYear(), viewedDate.getMonth());
           }
       } else {
-          // --- "My Calendar" is selected, or it's the default view for a solo user ---
-          const ownReadings = await getReadingsForMatesByMonth([user.uid], viewedDate.getFullYear(), viewedDate.getMonth());
-          setEventList(ownReadings);
-
+          // --- "My Calendar" is selected ---
+          fetchedReadings = await getReadingsForMatesByMonth([user.uid], viewedDate.getFullYear(), viewedDate.getMonth());
           const ownProfile = await getUserProfile(user.uid);
           if (ownProfile) {
-              const selfWithColor = { ...ownProfile, color: USER_COLORS[0] };
-              setMates([selfWithColor]);
-          } else {
-              setMates([]);
+              fetchedMates = [{ ...ownProfile, color: USER_COLORS[0] }];
           }
       }
+      
+      setMates(fetchedMates);
+      setEventList(fetchedReadings);
+
+      // --- NEW: Process readings into streaks ---
+      const processedStreaks = processReadingsIntoStreaks(fetchedReadings, fetchedMates);
+      setStreaks(processedStreaks);
       
       setIsLoading(false);
   };
@@ -129,6 +197,7 @@ export default function CalendarScreen() {
       if (logDate.getMonth() === viewedDate.getMonth() && logDate.getFullYear() === viewedDate.getFullYear()) {
         setEventList(prev => [...prev, { ...newReading, id: Math.random().toString() }]);
       }
+      fetchAllData();
       setBook(''); setChapter(''); setNotes(''); setIsLogReadingModalVisible(false);
       Alert.alert('Success', 'Your reading has been posted!');
     } catch (error) {
@@ -193,10 +262,8 @@ export default function CalendarScreen() {
               {monthsToDisplay.map((monthDate, index) => (
                 <View key={index} style={styles.page}>
                   <MonthView
-                    events={eventList}
-                    mates={mates} 
+                    streaks={streaks}
                     month={monthDate.getMonth()}
-                    day={monthDate.getDate()}
                     year={monthDate.getFullYear()}
                     onDayPress={handleDayPress}
                   />
