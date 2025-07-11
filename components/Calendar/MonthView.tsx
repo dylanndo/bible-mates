@@ -36,7 +36,17 @@ export default function MonthView({ streaks = [], month, year, onDayPress }: Mon
             return streakStart <= weekEndDate && streakEnd >= weekStartDate;
         });
 
-        // Assign tracks to each user with an active streak
+        // Sort streaks to determine vertical order.
+        // Longest streaks are prioritized (higher `span`).
+        // For streaks of the same length, the one that started earlier comes first.
+        activeStreaks.sort((a, b) => {
+          if (b.span !== a.span) {
+            return b.span - a.span; // Sort by span descending
+          }
+          return a.startDate.localeCompare(b.startDate); // Then by start date ascending
+        });
+
+        // Now assign the sorted streaks to the first available vertical track
         activeStreaks.forEach(streak => {
             if (!weekAssignments.has(streak.userId)) {
                 let trackIndex = 0;
