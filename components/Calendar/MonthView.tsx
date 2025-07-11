@@ -94,9 +94,18 @@ export default function MonthView({ streaks = [], month, year, onDayPress }: Mon
                 const trackIndex = weeklyTrackAssignments.get(weekKey)?.get(streak.userId) ?? 0;
                 
                 const dayWidth = 100 / 7; // as a percentage
-                const streakSpanInDays = endDayIndex - startDayIndex + 1;
-                // Calculate the base width, then subtract 1% to create a gap on the right.
-                const calculatedWidth = (streakSpanInDays * dayWidth) - 1;
+                let leftPercentage = startDayIndex * dayWidth;
+                let widthPercentage = (endDayIndex - startDayIndex + 1) * dayWidth;
+                
+                // If the streak starts in the first column (Sunday), add a gap on the left
+                if (startDayIndex === 0) {
+                  const leftGap = 1; // A 1% gap
+                  leftPercentage += leftGap;
+                  widthPercentage -= leftGap;
+                }
+                
+                // Subtract a small percentage for the gap on the right
+                widthPercentage -= 1;
 
                 return (
                   <View
@@ -105,8 +114,8 @@ export default function MonthView({ streaks = [], month, year, onDayPress }: Mon
                       styles.streakBlock,
                       {
                         backgroundColor: streak.color,
-                        left: `${startDayIndex * dayWidth}%`,
-                        width: `${calculatedWidth}%`,
+                        left: `${leftPercentage}%`,
+                        width: `${widthPercentage}%`,
                         top: 25 + trackIndex * 15, // Position streaks vertically
                       },
                     ]}
