@@ -43,7 +43,7 @@ export default function StatusCard({ mate, reading, streakLength }: StatusCardPr
 
       {hasRead && reading && (
         <Text style={styles.readingText}>
-          Read: {reading.book} {reading.chapter}
+         {reading.book} {reading.chapter}
         </Text>
       )}
     </View>
