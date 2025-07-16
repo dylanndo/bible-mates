@@ -1,6 +1,6 @@
 // app/day/[date].tsx
 
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, Keyboard, Modal, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableWithoutFeedback, View } from 'react-native';
@@ -33,7 +33,7 @@ const processReadingsIntoStreaks = (readings: Reading[], mates: Mate[]): Streak[
     for (let i = 1; i < userReadings.length; i++) {
       const currentDate = new Date(userReadings[i].date + 'T00:00:00');
       const prevDate = new Date(currentStreak.endDate + 'T00:00:00');
-      const diffDays = (currentDate.getTime() - prevDate.getTime()) / (1000 * 3600 * 24);
+      const diffDays = Math.round((currentDate.getTime() - prevDate.getTime()) / (1000 * 3600 * 24));
 
       if (diffDays === 1) {
         currentStreak.endDate = userReadings[i].date;
@@ -53,15 +53,17 @@ const DayViewContent = ({ date, readings, mates, streaks }: { date: Date, readin
     const isToday = new Date().toDateString() === date.toDateString();
     const dateString = date.toISOString().slice(0,10);
 
-    const getStreakLengthOnDate = (mateId: string, onDate: string): number => {
-        const streak = streaks.find(s => s.userId === mateId && onDate >= s.startDate && onDate <= s.endDate);
+    const getStreakLengthOnDate = (mateId: string, onDateStr: string): number => {
+        const streak = streaks.find(s => s.userId === mateId && onDateStr >= s.startDate && onDateStr <= s.endDate);
         if (!streak) {
             return 0;
         }
-        const startDate = new Date(streak.startDate + 'T00:00:00');
-        const currentDate = new Date(onDate + 'T00:00:00');
-        // Calculate days from streak start to the day being viewed
-        const length = Math.round((currentDate.getTime() - startDate.getTime()) / (1000 * 3600 * 24)) + 1;
+        // Use UTC for reliable date math, avoiding timezone issues
+        const [y, m, d] = onDateStr.split('-').map(Number);
+        const currentDateUTC = Date.UTC(y, m - 1, d);
+        const [sy, sm, sd] = streak.startDate.split('-').map(Number);
+        const startDateUTC = Date.UTC(sy, sm - 1, sd);
+        const length = Math.round((currentDateUTC - startDateUTC) / (1000 * 3600 * 24)) + 1;
         return length;
     };
 
@@ -108,11 +110,12 @@ export default function DayViewScreen() {
     const { user } = useAuth();
     if (user) { (global as any).currentUserId = user.uid; }
     
-    const initialDate = date ? new Date(date + 'T00:00:00') : new Date();
-    const [viewedDate, setViewedDate] = useState<Date>(initialDate);
-    const [readings, setReadings] = useState<Reading[]>([]);
+    // The source of truth is the 'date' param from the URL
+    const currentDate = useMemo(() => date ? new Date(date + 'T00:00:00') : new Date(), [date]);
+
+    // Cached data state
+    const [monthlyDataCache, setMonthlyDataCache] = useState<Record<string, {readings: Reading[], streaks: Streak[]}>>({});
     const [mates, setMates] = useState<Mate[]>([]);
-    const [streaks, setStreaks] = useState<Streak[]>([]);
     
     const [modalVisible, setModalVisible] = useState(false);
     const [book, setBook] = useState('');
@@ -121,84 +124,73 @@ export default function DayViewScreen() {
     const [logDate, setLogDate] = useState(new Date());
     const [showDatePicker, setShowDatePicker] = useState(false);
     
-    // This effect now only runs when the screen is first loaded
     useEffect(() => {
+        const monthKey = `${currentDate.getFullYear()}-${currentDate.getMonth()}`;
+
         const fetchAndSetData = async () => {
-            if (!date || !user) return;
+            if (!user) return;
             
-            const currentDate = new Date(date + 'T00:00:00');
-            setViewedDate(currentDate);
-            setSharedDate(currentDate);
-
-            const userGroups = await getGroupsForUser(user.uid);
-            let mateIds = [user.uid]
-            let currentMates: Mate[] = [];
-            if (userGroups && userGroups.length > 0) {
-                const groupId = userGroups[0].id;
-                const groupMates = await getGroupMates(groupId);
-                const currentGroup = userGroups.find(g => g.id === groupId);
-                const mateIdsInOrder = currentGroup ? currentGroup.mateIds : [];
-                
-                currentMates = groupMates.map(mate => {
-                    let color = getColorForUser(mate.id);
-                    if (mate.id === user.uid) {
-                        color = USER_COLORS[0];
-                    } else if (mateIdsInOrder.length > 0) {
-                        const otherMatesOrder = mateIdsInOrder.filter(id => id !== user.uid);
-                        const joinIndex = otherMatesOrder.indexOf(mate.id);
-                        if (joinIndex !== -1) {
-                            color = USER_COLORS[(joinIndex + 1) % USER_COLORS.length];
-                        }
-                    }
-                    return { ...mate, color };
-                });
-
-                if (groupMates.length > 0) {
-                    mateIds = groupMates.map(m => m.id);
-                }
-            } else {
-                const ownProfile = await getUserProfile(user.uid);
-                if (ownProfile) {
-                    currentMates = [{ ... ownProfile, color: USER_COLORS[0]}];
-                }
+            // Only fetch mates once or if they haven't been fetched yet
+            if (mates.length === 0) {
+              const userGroups = await getGroupsForUser(user.uid);
+              let currentMates: Mate[] = [];
+              if (userGroups && userGroups.length > 0) {
+                  const groupId = userGroups[0].id;
+                  const groupMates = await getGroupMates(groupId);
+                  const currentGroup = userGroups.find(g => g.id === groupId);
+                  const mateIdsInOrder = currentGroup ? currentGroup.mateIds : [];
+                  
+                  currentMates = groupMates.map(mate => {
+                      let color = getColorForUser(mate.id);
+                      if (mate.id === user.uid) { color = USER_COLORS[0]; } 
+                      else if (mateIdsInOrder.length > 0) {
+                          const otherMatesOrder = mateIdsInOrder.filter(id => id !== user.uid);
+                          const joinIndex = otherMatesOrder.indexOf(mate.id);
+                          if (joinIndex !== -1) { color = USER_COLORS[(joinIndex + 1) % USER_COLORS.length]; }
+                      }
+                      return { ...mate, color };
+                  });
+              } else {
+                  const ownProfile = await getUserProfile(user.uid);
+                  if (ownProfile) { currentMates = [{ ...ownProfile, color: USER_COLORS[0]}]; }
+              }
+              setMates(currentMates);
             }
-            setMates(currentMates);
-            
+
+            // If we already have data for this month in cache, don't refetch
+            if (monthlyDataCache[monthKey] || mates.length === 0) return;
+
             const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
             const monthEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
             
+            const mateIds = mates.map(m => m.id);
+            if(mateIds.length === 0) return;
+            
             const fetchedReadings = await getReadingsForMatesByDateRange(mateIds, monthStart, monthEnd);
-            setReadings(fetchedReadings);
-
-            const calculatedStreaks = processReadingsIntoStreaks(fetchedReadings, currentMates);
-            setStreaks(calculatedStreaks);
+            const calculatedStreaks = processReadingsIntoStreaks(fetchedReadings, mates);
+            
+            setMonthlyDataCache(prevCache => ({
+                ...prevCache,
+                [monthKey]: { readings: fetchedReadings, streaks: calculatedStreaks }
+            }));
         };
         fetchAndSetData();
-    }, [date, user, setSharedDate]);
+    }, [date, user, currentDate, monthlyDataCache, mates]); // Reruns when URL date changes
     
-    // This new effect handles the pager reset after a swipe
+    // This effect ensures the pager is always centered on the current day
     useEffect(() => {
         pagerRef.current?.setPageWithoutAnimation(1);
-    }, [viewedDate]);
-
-    const handleDateChange = (newDate: Date) => {
-        setViewedDate(newDate);
-        setSharedDate(newDate);
-    };
+        setSharedDate(currentDate);
+    }, [currentDate, setSharedDate]);
 
     const onPageSelected = (e: { nativeEvent: { position: number } }) => {
         if (e.nativeEvent.position === 1) return;
         
-        // Directly update the date state instead of reloading the whole route
-        const newDate = new Date(viewedDate);
-        newDate.setDate(viewedDate.getDate() + (e.nativeEvent.position === 0 ? -1 : 1));
+        const newDate = new Date(currentDate);
+        newDate.setDate(currentDate.getDate() + (e.nativeEvent.position === 0 ? -1 : 1));
 
-        // If the swipe crosses into a new month, we need to refetch data
-        if (newDate.getMonth() !== viewedDate.getMonth()) {
-            router.replace(`/day/${newDate.toISOString().slice(0, 10)}`);
-        } else {
-            setViewedDate(newDate);
-        }
+        // Use setParams to update the URL without a hard reload. This is the key to smooth swiping.
+        router.setParams({ date: newDate.toISOString().slice(0, 10) });
     };
 
     const handleAddReading = async () => {
@@ -212,8 +204,16 @@ export default function DayViewScreen() {
             };
             await addReading(newReading);
             
-            // To ensure streaks are correct, we must refetch by reloading the route
-            router.replace(`/day/${logDate.toISOString().slice(0, 10)}`);
+            // Clear cache for the month of the new reading to force a refetch
+            const monthKey = `${logDate.getFullYear()}-${logDate.getMonth()}`;
+            setMonthlyDataCache(prevCache => {
+                const newCache = { ...prevCache };
+                delete newCache[monthKey];
+                return newCache;
+            });
+
+            // Navigate to the date of the new reading
+            router.setParams({ date: logDate.toISOString().slice(0,10) });
 
             setBook(''); setChapter(''); setNotes(''); setModalVisible(false);
             Alert.alert('Success', 'Your reading has been posted!');
@@ -222,36 +222,30 @@ export default function DayViewScreen() {
             console.error(error);
         }
     };
-    const onChangeDate = (event: DateTimePickerEvent, selectedDate?: Date) => {
-        if (Platform.OS === 'android') { setShowDatePicker(false); }
-        if (event.type === 'set' && selectedDate) { setLogDate(selectedDate); }
-    };
-    const openModal = () => {
-        setLogDate(new Date()); setShowDatePicker(false); setModalVisible(true);
-    };
 
     const handleBackPress = () => {
-        if (viewedDate) {
-            setSharedDate(viewedDate);
-        }
         if (router.canGoBack()) {
             router.back();
         } else {
             router.replace('/');
         }
     };
+    
+    // Display data for the current month from the cache
+    const monthKey = `${currentDate.getFullYear()}-${currentDate.getMonth()}`;
+    const { readings = [], streaks = [] } = monthlyDataCache[monthKey] || {};
 
     const daysToDisplay = [
-        new Date(new Date(viewedDate).setDate(viewedDate.getDate() - 1)),
-        viewedDate,
-        new Date(new Date(viewedDate).setDate(viewedDate.getDate() + 1)),
+        new Date(new Date(currentDate).setDate(currentDate.getDate() - 1)),
+        currentDate,
+        new Date(new Date(currentDate).setDate(currentDate.getDate() + 1)),
     ];
 
     return (
         <SafeAreaView style={styles.container}>
             <CalendarHeader
-                date={viewedDate}
-                onDateChange={handleDateChange}
+                date={currentDate}
+                onDateChange={(d) => router.setParams({ date: d.toISOString().slice(0,10) })}
                 showBackButton={true}
                 onBackPress={handleBackPress}
             />
@@ -261,6 +255,7 @@ export default function DayViewScreen() {
                 style={styles.pagerView}
                 initialPage={1}
                 onPageSelected={onPageSelected}
+                key={date} // Use date from URL to reset pager when navigating from another screen
             >
                 {daysToDisplay.map((d, index) => (
                     <View key={index}>
@@ -269,7 +264,7 @@ export default function DayViewScreen() {
                 ))}
             </PagerView>
 
-            <Pressable style={styles.fab} onPress={openModal}>
+            <Pressable style={styles.fab} onPress={() => setModalVisible(true)}>
                 <Text style={styles.fabIcon}>+</Text>
             </Pressable>
             
@@ -281,13 +276,13 @@ export default function DayViewScreen() {
                             <View style={styles.datePickerContainer}>
                                 <Text style={styles.dateLabel}>Date</Text>
                                 {Platform.OS === 'ios' ? (
-                                    <DateTimePicker value={logDate} mode="date" display="compact" onChange={onChangeDate} maximumDate={new Date()} style={styles.datePickerIOS} />
+                                    <DateTimePicker value={logDate} mode="date" display="compact" onChange={(e,d) => d && setLogDate(d)} maximumDate={new Date()} style={styles.datePickerIOS} />
                                 ) : (
                                     <Pressable onPress={() => setShowDatePicker(true)} style={styles.datePickerButton}><Text style={styles.datePickerButtonText}>{logDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}</Text></Pressable>
                                 )}
                             </View>
                             {showDatePicker && Platform.OS === 'android' && (
-                                <DateTimePicker value={logDate} mode="date" display="default" onChange={onChangeDate} maximumDate={new Date()} />
+                                <DateTimePicker value={logDate} mode="date" display="default" onChange={(e,d) => {setShowDatePicker(false); if(d) setLogDate(d)}} maximumDate={new Date()} />
                             )}
                             <TextInput style={styles.input} placeholder="Book (e.g., Genesis)" value={book} onChangeText={setBook} />
                             <TextInput style={styles.input} placeholder="Chapter (e.g., 1)" value={chapter} onChangeText={setChapter} keyboardType="numeric" />
