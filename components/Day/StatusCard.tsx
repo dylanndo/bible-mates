@@ -74,7 +74,7 @@ const styles = StyleSheet.create({
   nameText: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#0d47a1',
+    color: '#333',
   },
   nameTextUnread: {
     color: '#aaa',
@@ -85,7 +85,7 @@ const styles = StyleSheet.create({
   },
   readingText: {
     fontSize: 16,
-    color: '#1565c0',
+    color: '#333',
     marginTop: 8,
     fontStyle: 'italic',
   },
@@ -110,7 +110,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   streakText: {
-    color: '#fff',
+    color: '#333',
     fontWeight: 'bold',
     fontSize: 16,
   },
