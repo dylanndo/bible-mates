@@ -22,3 +22,14 @@ export type Group = {
   mateIds: string[];
   inviteCode: string;
 };
+
+// Represents a continuous streak of readings for a user.
+export type Streak = {
+  id: string;          // A unique ID for the streak (e.g., `userId-startDate`)
+  userId: string;
+  firstName: string;
+  color: string;
+  startDate: string;   // "YYYY-MM-DD"
+  endDate: string;     // "YYYY-MM-DD"
+  span: number;        // Number of days in the streak
+};

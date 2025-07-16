@@ -1,20 +1,87 @@
-import { Feather } from '@expo/vector-icons';
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+// app/day/[date].tsx
+
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Button, Keyboard, Modal, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableWithoutFeedback, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Button, Keyboard, Modal, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableWithoutFeedback, View } from 'react-native';
 import PagerView from 'react-native-pager-view';
 import { addReading, getGroupMates, getGroupsForUser, getReadingsForMatesByDateRange, getUserProfile } from '../../api/firebase';
 import CalendarHeader from '../../components/Calendar/CalendarHeader';
+import StatusCard from '../../components/Day/StatusCard';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCalendar } from '../../contexts/CalendarContext';
-import { Mate, Reading } from '../../types';
+import { Mate, Reading, Streak } from '../../types';
 import { getColorForUser, USER_COLORS } from '../../utils/colorHelper';
 
-const DayViewContent = ({ date, readings, mates }: { date: Date, readings: Reading[], mates: Mate[] }) => {
+const processReadingsIntoStreaks = (readings: Reading[], mates: Mate[]): Streak[] => {
+  if (!readings.length || !mates.length) return [];
+  const streaks: Streak[] = [];
+  const mateMap = new Map(mates.map(m => [m.id, m]));
+  const readingsByUser = readings.reduce((acc, reading) => {
+    if (!acc[reading.userId]) { acc[reading.userId] = []; }
+    acc[reading.userId].push(reading);
+    return acc;
+  }, {} as Record<string, Reading[]>);
+
+  for (const userId in readingsByUser) {
+    const userReadings = readingsByUser[userId].sort((a, b) => a.date.localeCompare(b.date));
+    if (userReadings.length === 0) continue;
+    const mateInfo = mateMap.get(userId);
+    if (!mateInfo) continue;
+
+    let currentStreak: Streak = { id: `${userId}-${userReadings[0].date}`, userId: userId, firstName: mateInfo.firstName, color: mateInfo.color, startDate: userReadings[0].date, endDate: userReadings[0].date, span: 1 };
+    for (let i = 1; i < userReadings.length; i++) {
+      const currentDate = new Date(userReadings[i].date + 'T00:00:00');
+      const prevDate = new Date(currentStreak.endDate + 'T00:00:00');
+      const diffDays = Math.round((currentDate.getTime() - prevDate.getTime()) / (1000 * 3600 * 24));
+
+      if (diffDays === 1) {
+        currentStreak.endDate = userReadings[i].date;
+        currentStreak.span += 1;
+      } else {
+        streaks.push(currentStreak);
+        currentStreak = { id: `${userId}-${userReadings[i].date}`, userId: userId, firstName: mateInfo.firstName, color: mateInfo.color, startDate: userReadings[i].date, endDate: userReadings[i].date, span: 1 };
+      }
+    }
+    streaks.push(currentStreak);
+  }
+  return streaks;
+};
+
+const DayViewContent = ({ date, readings, mates, streaks }: { date: Date, readings: Reading[], mates: Mate[], streaks: Streak[] }) => {
     const daysOfWeek = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
     const isToday = new Date().toDateString() === date.toDateString();
     const dateString = date.toISOString().slice(0,10);
+
+    const getStreakLengthOnDate = (mateId: string, onDateStr: string): number => {
+        const streak = streaks.find(s => s.userId === mateId && onDateStr >= s.startDate && onDateStr <= s.endDate);
+        if (!streak) {
+            return 0;
+        }
+        // Use UTC for reliable date math, avoiding timezone issues
+        const [y, m, d] = onDateStr.split('-').map(Number);
+        const currentDateUTC = Date.UTC(y, m - 1, d);
+        const [sy, sm, sd] = streak.startDate.split('-').map(Number);
+        const startDateUTC = Date.UTC(sy, sm - 1, sd);
+        const length = Math.round((currentDateUTC - startDateUTC) / (1000 * 3600 * 24)) + 1;
+        return length;
+    };
+
+    const sortedMates = useMemo(() => {
+        return [...mates].sort((a, b) => {
+            const aStreakLen = getStreakLengthOnDate(a.id, dateString);
+            const bStreakLen = getStreakLengthOnDate(b.id, dateString);
+
+            // Priority 1: Sort by streak length on that day (descending).
+            if (aStreakLen !== bStreakLen) {
+                return bStreakLen - aStreakLen;
+            }
+
+            // Priority 2: Alphabetical as a tie-breaker.
+            return a.firstName.localeCompare(b.firstName);
+        });
+    }, [dateString, mates, streaks]);
+    
     return (
         <View style={styles.pageContainer}>
             <View style={styles.dayHeader}>
@@ -24,35 +91,32 @@ const DayViewContent = ({ date, readings, mates }: { date: Date, readings: Readi
                 </View>
             </View>
             <ScrollView contentContainerStyle={styles.scrollContentContainer}>
-                {mates.map(mate => {
+                {sortedMates.map(mate => {
                     const readingForMate = readings.find(r => r.userId === mate.id && r.date === dateString);
-                    const hasRead = !!readingForMate;
-                    return (
-                        <View key={mate.id} style={[styles.eventBlock, { backgroundColor: hasRead ? mate.color || '#e3f2fd' : '#fafafa' }, !hasRead && styles.eventBlockUnread]}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                <Text style={[styles.eventTextName, !hasRead && styles.eventTextUnread]}>{mate.firstName} {mate.lastName}</Text>
-                                {hasRead && <Feather name="check-circle" size={18} color="green" style={{ marginLeft: 8 }} />}
-                            </View>
-                            {hasRead && <Text style={styles.eventTextReading}>Read: {readingForMate.book} {readingForMate.chapter}</Text>}
-                        </View>
-                    )
+                    const streakLength = getStreakLengthOnDate(mate.id, dateString);
+                    return <StatusCard key={mate.id} mate={mate} reading={readingForMate} streakLength={streakLength} />;
                 })}
             </ScrollView>
         </View>
     );
 };
+
 export default function DayViewScreen() {
     const { date } = useLocalSearchParams<{ date: string }>();
     const router = useRouter();
     const pagerRef = useRef<PagerView>(null);
     
     const { setViewedDate: setSharedDate } = useCalendar();
+    const { user } = useAuth();
+    if (user) { (global as any).currentUserId = user.uid; }
+    
+    // The source of truth is the 'date' param from the URL
+    const currentDate = useMemo(() => date ? new Date(date + 'T00:00:00') : new Date(), [date]);
 
-    const [viewedDate, setViewedDate] = useState<Date | null>(null);
-    const [readings, setReadings] = useState<Reading[]>([]);
+    // Cached data state
+    const [monthlyDataCache, setMonthlyDataCache] = useState<Record<string, {readings: Reading[], streaks: Streak[]}>>({});
     const [mates, setMates] = useState<Mate[]>([]);
     
-    const { user } = useAuth();
     const [modalVisible, setModalVisible] = useState(false);
     const [book, setBook] = useState('');
     const [chapter, setChapter] = useState('');
@@ -61,80 +125,73 @@ export default function DayViewScreen() {
     const [showDatePicker, setShowDatePicker] = useState(false);
     
     useEffect(() => {
+        const monthKey = `${currentDate.getFullYear()}-${currentDate.getMonth()}`;
+
         const fetchAndSetData = async () => {
-            if (!date || !user) return;
+            if (!user) return;
             
-            const initialDate = new Date(date + 'T00:00:00');
-            setViewedDate(initialDate);
-            setSharedDate(initialDate);
-
-            const userGroups = await getGroupsForUser(user.uid);
-            let mateIds = [user.uid]
-            if (userGroups && userGroups.length > 0) {
-                const groupId = userGroups[0].id;
-                const groupMates = await getGroupMates(groupId);
-                const currentGroup = userGroups.find(g => g.id === groupId);
-                const mateIdsInOrder = currentGroup ? currentGroup.mateIds : [];
-                
-                const matesWithColors = groupMates.map(mate => {
-                    let color = getColorForUser(mate.id);
-                    if (mate.id === user.uid) {
-                        color = USER_COLORS[0];
-                    } else if (mateIdsInOrder.length > 0) {
-                        const otherMatesOrder = mateIdsInOrder.filter(id => id !== user.uid);
-                        const joinIndex = otherMatesOrder.indexOf(mate.id);
-                        if (joinIndex !== -1) {
-                            color = USER_COLORS[(joinIndex + 1) % USER_COLORS.length];
-                        }
-                    }
-                    return { ...mate, color };
-                });
-                setMates(matesWithColors);
-
-                if (groupMates.length > 0) {
-                    mateIds = groupMates.map(m => m.id);
-                }
-            } else {
-                const ownProfile = await getUserProfile(user.uid);
-                if (ownProfile) {
-                    setMates([{ ... ownProfile, color: USER_COLORS[0]}]);
-                }
+            // Only fetch mates once or if they haven't been fetched yet
+            if (mates.length === 0) {
+              const userGroups = await getGroupsForUser(user.uid);
+              let currentMates: Mate[] = [];
+              if (userGroups && userGroups.length > 0) {
+                  const groupId = userGroups[0].id;
+                  const groupMates = await getGroupMates(groupId);
+                  const currentGroup = userGroups.find(g => g.id === groupId);
+                  const mateIdsInOrder = currentGroup ? currentGroup.mateIds : [];
+                  
+                  currentMates = groupMates.map(mate => {
+                      let color = getColorForUser(mate.id);
+                      if (mate.id === user.uid) { color = USER_COLORS[0]; } 
+                      else if (mateIdsInOrder.length > 0) {
+                          const otherMatesOrder = mateIdsInOrder.filter(id => id !== user.uid);
+                          const joinIndex = otherMatesOrder.indexOf(mate.id);
+                          if (joinIndex !== -1) { color = USER_COLORS[(joinIndex + 1) % USER_COLORS.length]; }
+                      }
+                      return { ...mate, color };
+                  });
+              } else {
+                  const ownProfile = await getUserProfile(user.uid);
+                  if (ownProfile) { currentMates = [{ ...ownProfile, color: USER_COLORS[0]}]; }
+              }
+              setMates(currentMates);
             }
-            const startDate = new Date(initialDate);
-            startDate.setDate(startDate.getDate() - 3);
-            const endDate = new Date(initialDate);
-            endDate.setDate(endDate.getDate() + 3);
+
+            // If we already have data for this month in cache, don't refetch
+            if (monthlyDataCache[monthKey] || mates.length === 0) return;
+
+            const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+            const monthEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
             
-            const fetchedReadings = await getReadingsForMatesByDateRange(mateIds, startDate, endDate);
-            setReadings(fetchedReadings);
+            const mateIds = mates.map(m => m.id);
+            if(mateIds.length === 0) return;
+            
+            const fetchedReadings = await getReadingsForMatesByDateRange(mateIds, monthStart, monthEnd);
+            const calculatedStreaks = processReadingsIntoStreaks(fetchedReadings, mates);
+            
+            setMonthlyDataCache(prevCache => ({
+                ...prevCache,
+                [monthKey]: { readings: fetchedReadings, streaks: calculatedStreaks }
+            }));
         };
         fetchAndSetData();
+    }, [date, user, currentDate, monthlyDataCache, mates]); // Reruns when URL date changes
+    
+    // This effect ensures the pager is always centered on the current day
+    useEffect(() => {
         pagerRef.current?.setPageWithoutAnimation(1);
-    }, [date, user, setSharedDate]);
-
-    const handleDateChange = (newDate: Date) => {
-        setSharedDate(newDate);
-        const dateString = newDate.toISOString().slice(0, 10);
-        router.replace(`/day/${dateString}`);
-    };
+        setSharedDate(currentDate);
+    }, [currentDate, setSharedDate]);
 
     const onPageSelected = (e: { nativeEvent: { position: number } }) => {
-        if (!viewedDate || e.nativeEvent.position === 1) return;
-        let newDate = new Date(viewedDate);
-        if (e.nativeEvent.position === 0) newDate.setDate(newDate.getDate() - 1);
-        else if (e.nativeEvent.position === 2) newDate.setDate(newDate.getDate() + 1);
-        handleDateChange(newDate);
+        if (e.nativeEvent.position === 1) return;
+        
+        const newDate = new Date(currentDate);
+        newDate.setDate(currentDate.getDate() + (e.nativeEvent.position === 0 ? -1 : 1));
+
+        // Use setParams to update the URL without a hard reload. This is the key to smooth swiping.
+        router.setParams({ date: newDate.toISOString().slice(0, 10) });
     };
-
-    if (!viewedDate) {
-        return <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#1976d2" /></View>;
-    }
-
-    const daysToDisplay = [
-        new Date(new Date(viewedDate).setDate(viewedDate.getDate() - 1)),
-        viewedDate,
-        new Date(new Date(viewedDate).setDate(viewedDate.getDate() + 1)),
-    ];
 
     const handleAddReading = async () => {
         if (!book || !chapter) { Alert.alert('Missing Info', 'Please provide a book and chapter.'); return; }
@@ -146,9 +203,18 @@ export default function DayViewScreen() {
                 userId: user.uid, firstName: userProfile.firstName, book, chapter, notes, date: logDate.toISOString().slice(0, 10),
             };
             await addReading(newReading);
-            if (viewedDate && logDate.toISOString().slice(0, 10) === viewedDate.toISOString().slice(0, 10)) {
-                setReadings(prev => [...prev, { ...newReading, id: Math.random().toString() }]);
-            }
+            
+            // Clear cache for the month of the new reading to force a refetch
+            const monthKey = `${logDate.getFullYear()}-${logDate.getMonth()}`;
+            setMonthlyDataCache(prevCache => {
+                const newCache = { ...prevCache };
+                delete newCache[monthKey];
+                return newCache;
+            });
+
+            // Navigate to the date of the new reading
+            router.setParams({ date: logDate.toISOString().slice(0,10) });
+
             setBook(''); setChapter(''); setNotes(''); setModalVisible(false);
             Alert.alert('Success', 'Your reading has been posted!');
         } catch (error) {
@@ -156,36 +222,30 @@ export default function DayViewScreen() {
             console.error(error);
         }
     };
-    const onChangeDate = (event: DateTimePickerEvent, selectedDate?: Date) => {
-        if (Platform.OS === 'android') { setShowDatePicker(false); }
-        if (event.type === 'set' && selectedDate) { setLogDate(selectedDate); }
-    };
-    const openModal = () => {
-        setLogDate(new Date()); setShowDatePicker(false); setModalVisible(true);
-    };
 
     const handleBackPress = () => {
-        if (viewedDate) {
-            setSharedDate(viewedDate);
-        }
         if (router.canGoBack()) {
             router.back();
         } else {
             router.replace('/');
         }
     };
-
-    if (!viewedDate) {
-        return <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#1976d2" /></View>;
-    }
     
-    const isToday = new Date().toDateString() === viewedDate.toDateString();
+    // Display data for the current month from the cache
+    const monthKey = `${currentDate.getFullYear()}-${currentDate.getMonth()}`;
+    const { readings = [], streaks = [] } = monthlyDataCache[monthKey] || {};
+
+    const daysToDisplay = [
+        new Date(new Date(currentDate).setDate(currentDate.getDate() - 1)),
+        currentDate,
+        new Date(new Date(currentDate).setDate(currentDate.getDate() + 1)),
+    ];
 
     return (
         <SafeAreaView style={styles.container}>
             <CalendarHeader
-                date={viewedDate}
-                onDateChange={handleDateChange}
+                date={currentDate}
+                onDateChange={(d) => router.setParams({ date: d.toISOString().slice(0,10) })}
                 showBackButton={true}
                 onBackPress={handleBackPress}
             />
@@ -195,42 +255,16 @@ export default function DayViewScreen() {
                 style={styles.pagerView}
                 initialPage={1}
                 onPageSelected={onPageSelected}
-                key={viewedDate.toISOString()}
+                key={date} // Use date from URL to reset pager when navigating from another screen
             >
                 {daysToDisplay.map((d, index) => (
                     <View key={index}>
-                        <DayViewContent date={d} readings={readings} mates={mates} />
+                        <DayViewContent date={d} readings={readings} mates={mates} streaks={streaks}/>
                     </View>
                 ))}
             </PagerView>
 
-            {/* <ScrollView contentContainerStyle={styles.scrollContentContainer}>
-                {isLoading ? (
-                    <ActivityIndicator size="large" color="#1976d2" style={{ marginTop: 50 }} />
-                ) : (
-                    mates.map(mate => {
-                        const readingForMate = readings.find(r => r.userId === mate.id);
-                        const hasRead = !!readingForMate;
-                        return (
-                            <View key={mate.id} style={[styles.eventBlock, { backgroundColor: hasRead ? mate.color || '#e3f2fd' : '#fafafa' }, !hasRead && styles.eventBlockUnread]}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                    <Text style={[styles.eventTextName, !hasRead && styles.eventTextUnread]}>
-                                        {mate.firstName} {mate.lastName}
-                                    </Text>
-                                    {hasRead && <Feather name="check-circle" size={18} color="green" style={{ marginLeft: 8 }} />}
-                                </View>
-                                {hasRead && (
-                                    <Text style={styles.eventTextReading}>
-                                        Read: {readingForMate.book} {readingForMate.chapter}
-                                    </Text>
-                                )}
-                            </View>
-                        )
-                    })
-                )}
-            </ScrollView> */}
-
-            <Pressable style={styles.fab} onPress={openModal}>
+            <Pressable style={styles.fab} onPress={() => setModalVisible(true)}>
                 <Text style={styles.fabIcon}>+</Text>
             </Pressable>
             
@@ -242,13 +276,13 @@ export default function DayViewScreen() {
                             <View style={styles.datePickerContainer}>
                                 <Text style={styles.dateLabel}>Date</Text>
                                 {Platform.OS === 'ios' ? (
-                                    <DateTimePicker value={logDate} mode="date" display="compact" onChange={onChangeDate} maximumDate={new Date()} style={styles.datePickerIOS} />
+                                    <DateTimePicker value={logDate} mode="date" display="compact" onChange={(e,d) => d && setLogDate(d)} maximumDate={new Date()} style={styles.datePickerIOS} />
                                 ) : (
                                     <Pressable onPress={() => setShowDatePicker(true)} style={styles.datePickerButton}><Text style={styles.datePickerButtonText}>{logDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}</Text></Pressable>
                                 )}
                             </View>
                             {showDatePicker && Platform.OS === 'android' && (
-                                <DateTimePicker value={logDate} mode="date" display="default" onChange={onChangeDate} maximumDate={new Date()} />
+                                <DateTimePicker value={logDate} mode="date" display="default" onChange={(e,d) => {setShowDatePicker(false); if(d) setLogDate(d)}} maximumDate={new Date()} />
                             )}
                             <TextInput style={styles.input} placeholder="Book (e.g., Genesis)" value={book} onChangeText={setBook} />
                             <TextInput style={styles.input} placeholder="Chapter (e.g., 1)" value={chapter} onChangeText={setChapter} keyboardType="numeric" />
@@ -264,17 +298,16 @@ export default function DayViewScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#fff' },
-    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    container: { flex: 1, backgroundColor: '#f5f5f5' },
     pagerView: { flex: 1 },
     pageContainer: { flex: 1 },
-    dayHeader: { paddingVertical: 10, alignItems: 'center', borderBottomWidth: 1, borderColor: '#eee' },
+    dayHeader: { paddingVertical: 10, alignItems: 'center', backgroundColor: '#fff', borderBottomWidth: 1, borderColor: '#eee' },
     dayNameText: { fontSize: 14, fontWeight: '500', color: '#666', marginBottom: 8 },
     dateCircle: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
     todayCircle: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1976d2' },
     dateText: { fontSize: 22, fontWeight: 'bold', color: '#333' },
     todayDateText: { fontSize: 22, fontWeight: 'bold', color: '#fff' },
-    scrollContentContainer: { flexGrow: 1, padding: 8 },
+    scrollContentContainer: { flexGrow: 1, paddingVertical: 8 },
     eventBlock: { marginVertical: 4, padding: 16, borderRadius: 8 },
     eventBlockUnread: { backgroundColor: '#fafafa', borderColor: '#eee', borderWidth: 1 },
     eventTextName: { fontSize: 18, fontWeight: 'bold', color: '#0d47a1' },
@@ -283,13 +316,13 @@ const styles = StyleSheet.create({
     fab: { position: 'absolute', right: 25, bottom: 25, width: 60, height: 60, borderRadius: 30, backgroundColor: '#1976d2', justifyContent: 'center', alignItems: 'center', elevation: 8 },
     fabIcon: { fontSize: 30, color: 'white', lineHeight: 32 },
     modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
-    modalView: { width: '98%', backgroundColor: 'white', borderRadius: 20, padding: 20, elevation: 5 },
+    modalView: { width: '95%', backgroundColor: 'white', borderRadius: 20, padding: 20, elevation: 5 },
     modalTitle: { fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 },
-    input: { borderWidth: 1, borderColor: '#ddd', padding: 10, marginBottom: 15, borderRadius: 5 },
-    notesInput: { height: 80, textAlignVertical: 'top', paddingTop: 10 },
+    input: { borderWidth: 1, borderColor: '#ddd', padding: 12, marginBottom: 15, borderRadius: 8 },
+    notesInput: { height: 80, textAlignVertical: 'top', paddingTop: 12 },
     datePickerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
     dateLabel: { fontSize: 16, color: '#333' },
     datePickerButton: { backgroundColor: '#f0f0f0', paddingVertical: 10, paddingHorizontal: 15, borderRadius: 5 },
     datePickerButtonText: { fontSize: 16, color: '#1976d2', fontWeight: '500' },
-    datePickerIOS: { justifyContent: 'flex-end' },
+    datePickerIOS: { flex: 1, justifyContent: 'flex-end' },
 });
