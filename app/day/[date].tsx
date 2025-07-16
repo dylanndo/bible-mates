@@ -1,6 +1,8 @@
+// app/day/[date].tsx
+
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, Keyboard, Modal, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableWithoutFeedback, View } from 'react-native';
 import PagerView from 'react-native-pager-view';
 import { addReading, getGroupMates, getGroupsForUser, getReadingsForMatesByDateRange, getUserProfile } from '../../api/firebase';
@@ -8,19 +10,75 @@ import CalendarHeader from '../../components/Calendar/CalendarHeader';
 import StatusCard from '../../components/Day/StatusCard';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCalendar } from '../../contexts/CalendarContext';
-import { Mate, Reading } from '../../types';
+import { Mate, Reading, Streak } from '../../types';
 import { getColorForUser, USER_COLORS } from '../../utils/colorHelper';
 
-const DayViewContent = ({ date, readings, mates }: { date: Date, readings: Reading[], mates: Mate[] }) => {
+const processReadingsIntoStreaks = (readings: Reading[], mates: Mate[]): Streak[] => {
+  if (!readings.length || !mates.length) return [];
+  const streaks: Streak[] = [];
+  const mateMap = new Map(mates.map(m => [m.id, m]));
+  const readingsByUser = readings.reduce((acc, reading) => {
+    if (!acc[reading.userId]) { acc[reading.userId] = []; }
+    acc[reading.userId].push(reading);
+    return acc;
+  }, {} as Record<string, Reading[]>);
+
+  for (const userId in readingsByUser) {
+    const userReadings = readingsByUser[userId].sort((a, b) => a.date.localeCompare(b.date));
+    if (userReadings.length === 0) continue;
+    const mateInfo = mateMap.get(userId);
+    if (!mateInfo) continue;
+
+    let currentStreak: Streak = { id: `${userId}-${userReadings[0].date}`, userId: userId, firstName: mateInfo.firstName, color: mateInfo.color, startDate: userReadings[0].date, endDate: userReadings[0].date, span: 1 };
+    for (let i = 1; i < userReadings.length; i++) {
+      const currentDate = new Date(userReadings[i].date + 'T00:00:00');
+      const prevDate = new Date(currentStreak.endDate + 'T00:00:00');
+      const diffDays = (currentDate.getTime() - prevDate.getTime()) / (1000 * 3600 * 24);
+
+      if (diffDays === 1) {
+        currentStreak.endDate = userReadings[i].date;
+        currentStreak.span += 1;
+      } else {
+        streaks.push(currentStreak);
+        currentStreak = { id: `${userId}-${userReadings[i].date}`, userId: userId, firstName: mateInfo.firstName, color: mateInfo.color, startDate: userReadings[i].date, endDate: userReadings[i].date, span: 1 };
+      }
+    }
+    streaks.push(currentStreak);
+  }
+  return streaks;
+};
+
+const DayViewContent = ({ date, readings, mates, streaks }: { date: Date, readings: Reading[], mates: Mate[], streaks: Streak[] }) => {
     const daysOfWeek = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
     const isToday = new Date().toDateString() === date.toDateString();
     const dateString = date.toISOString().slice(0,10);
 
-    const sortedMates = [...mates].sort((a, b) => {
-        if (a.id === (global as any).currentUserId) return -1;
-        if (b.id === (global as any).currentUserId) return 1;
-        return a.firstName.localeCompare(b.firstName);
-    });
+    const getStreakLengthOnDate = (mateId: string, onDate: string): number => {
+        const streak = streaks.find(s => s.userId === mateId && onDate >= s.startDate && onDate <= s.endDate);
+        if (!streak) {
+            return 0;
+        }
+        const startDate = new Date(streak.startDate + 'T00:00:00');
+        const currentDate = new Date(onDate + 'T00:00:00');
+        // Calculate days from streak start to the day being viewed
+        const length = Math.round((currentDate.getTime() - startDate.getTime()) / (1000 * 3600 * 24)) + 1;
+        return length;
+    };
+
+    const sortedMates = useMemo(() => {
+        return [...mates].sort((a, b) => {
+            const aStreakLen = getStreakLengthOnDate(a.id, dateString);
+            const bStreakLen = getStreakLengthOnDate(b.id, dateString);
+
+            // Priority 1: Sort by streak length on that day (descending).
+            if (aStreakLen !== bStreakLen) {
+                return bStreakLen - aStreakLen;
+            }
+
+            // Priority 2: Alphabetical as a tie-breaker.
+            return a.firstName.localeCompare(b.firstName);
+        });
+    }, [dateString, mates, streaks]);
     
     return (
         <View style={styles.pageContainer}>
@@ -33,7 +91,8 @@ const DayViewContent = ({ date, readings, mates }: { date: Date, readings: Readi
             <ScrollView contentContainerStyle={styles.scrollContentContainer}>
                 {sortedMates.map(mate => {
                     const readingForMate = readings.find(r => r.userId === mate.id && r.date === dateString);
-                    return <StatusCard key={mate.id} mate={mate} reading={readingForMate} />;
+                    const streakLength = getStreakLengthOnDate(mate.id, dateString);
+                    return <StatusCard key={mate.id} mate={mate} reading={readingForMate} streakLength={streakLength} />;
                 })}
             </ScrollView>
         </View>
@@ -53,6 +112,7 @@ export default function DayViewScreen() {
     const [viewedDate, setViewedDate] = useState<Date>(initialDate);
     const [readings, setReadings] = useState<Reading[]>([]);
     const [mates, setMates] = useState<Mate[]>([]);
+    const [streaks, setStreaks] = useState<Streak[]>([]);
     
     const [modalVisible, setModalVisible] = useState(false);
     const [book, setBook] = useState('');
@@ -104,13 +164,14 @@ export default function DayViewScreen() {
             }
             setMates(currentMates);
             
-            const startDate = new Date(currentDate);
-            startDate.setDate(startDate.getDate() - 3);
-            const endDate = new Date(currentDate);
-            endDate.setDate(endDate.getDate() + 3);
+            const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+            const monthEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
             
-            const fetchedReadings = await getReadingsForMatesByDateRange(mateIds, startDate, endDate);
+            const fetchedReadings = await getReadingsForMatesByDateRange(mateIds, monthStart, monthEnd);
             setReadings(fetchedReadings);
+
+            const calculatedStreaks = processReadingsIntoStreaks(fetchedReadings, currentMates);
+            setStreaks(calculatedStreaks);
         };
         fetchAndSetData();
     }, [date, user, setSharedDate]);
@@ -131,7 +192,13 @@ export default function DayViewScreen() {
         // Directly update the date state instead of reloading the whole route
         const newDate = new Date(viewedDate);
         newDate.setDate(viewedDate.getDate() + (e.nativeEvent.position === 0 ? -1 : 1));
-        setViewedDate(newDate);
+
+        // If the swipe crosses into a new month, we need to refetch data
+        if (newDate.getMonth() !== viewedDate.getMonth()) {
+            router.replace(`/day/${newDate.toISOString().slice(0, 10)}`);
+        } else {
+            setViewedDate(newDate);
+        }
     };
 
     const handleAddReading = async () => {
@@ -144,7 +211,10 @@ export default function DayViewScreen() {
                 userId: user.uid, firstName: userProfile.firstName, book, chapter, notes, date: logDate.toISOString().slice(0, 10),
             };
             await addReading(newReading);
-            setReadings(prev => [...prev, { ...newReading, id: Math.random().toString() }]);
+            
+            // To ensure streaks are correct, we must refetch by reloading the route
+            router.replace(`/day/${logDate.toISOString().slice(0, 10)}`);
+
             setBook(''); setChapter(''); setNotes(''); setModalVisible(false);
             Alert.alert('Success', 'Your reading has been posted!');
         } catch (error) {
@@ -194,7 +264,7 @@ export default function DayViewScreen() {
             >
                 {daysToDisplay.map((d, index) => (
                     <View key={index}>
-                        <DayViewContent date={d} readings={readings} mates={mates} />
+                        <DayViewContent date={d} readings={readings} mates={mates} streaks={streaks}/>
                     </View>
                 ))}
             </PagerView>

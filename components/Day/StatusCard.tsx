@@ -6,9 +6,10 @@ import { Mate, Reading } from '../../types';
 type StatusCardProps = {
   mate: Mate;
   reading: Reading | undefined;
+  streakLength: number;
 };
 
-export default function StatusCard({ mate, reading }: StatusCardProps) {
+export default function StatusCard({ mate, reading, streakLength }: StatusCardProps) {
   const hasRead = !!reading;
 
   const handleNudge = () => {
@@ -18,9 +19,18 @@ export default function StatusCard({ mate, reading }: StatusCardProps) {
   return (
     <View style={[styles.cardBase, { backgroundColor: hasRead ? mate.color : '#fafafa' }, !hasRead && styles.cardUnread]}>
       <View style={styles.cardHeader}>
-        <Text style={[styles.nameText, !hasRead && styles.nameTextUnread]}>
-          {mate.firstName} {mate.lastName}
-        </Text>
+        <View style={styles.nameContainer}>
+          <Text style={[styles.nameText, !hasRead && styles.nameTextUnread]}>
+            {mate.firstName} {mate.lastName}
+          </Text>
+          {/* Display streak count if the user has read */}
+          {hasRead && streakLength > 0 && (
+            <View style={styles.streakContainer}>
+              <Text style={styles.streakText}>{streakLength}</Text>
+              <Text style={styles.streakEmoji}>🔥</Text>
+            </View>
+          )}
+        </View>
         
         {hasRead ? (
           <Feather name="check-circle" size={18} color="green" style={styles.checkIcon} />
@@ -41,7 +51,6 @@ export default function StatusCard({ mate, reading }: StatusCardProps) {
 }
 
 const styles = StyleSheet.create({
-  // Styles reverted to match your original design
   cardBase: {
     marginVertical: 4,
     marginHorizontal: 8,
@@ -58,13 +67,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '100%',
   },
+  nameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   nameText: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#0d47a1', // Original color for "Read" state
+    color: '#0d47a1',
   },
   nameTextUnread: {
-    color: '#aaa',     // Original color for "Unread" state
+    color: '#aaa',
     fontWeight: 'normal',
   },
   checkIcon: {
@@ -72,11 +85,10 @@ const styles = StyleSheet.create({
   },
   readingText: {
     fontSize: 16,
-    color: '#1565c0', // Original color
+    color: '#1565c0',
     marginTop: 8,
     fontStyle: 'italic',
   },
-  // New styles for the Nudge button positioning
   nudgeButton: {
     backgroundColor: '#e0e0e0',
     paddingVertical: 6,
@@ -87,5 +99,23 @@ const styles = StyleSheet.create({
     color: '#333',
     fontSize: 14,
     fontWeight: '600',
+  },
+   streakContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 10,
+    backgroundColor: 'rgba(0,0,0,0.1)',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  streakText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  streakEmoji: {
+    fontSize: 14,
+    marginLeft: 3,
   },
 });
