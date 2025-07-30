@@ -48,7 +48,14 @@ const processReadingsIntoStreaks = (readings: Reading[], mates: Mate[]): Streak[
   return streaks;
 };
 
-const DayViewContent = ({ date, readings, mates, streaks }: { date: Date, readings: Reading[], mates: Mate[], streaks: Streak[] }) => {
+const DayViewContent = ({ date, readings, mates, streaks, expandedCardIds, onCardPress }: { 
+  date: Date, 
+  readings: Reading[], 
+  mates: Mate[], 
+  streaks: Streak[],
+  expandedCardIds: string[],
+  onCardPress: (mateId: string) => void,
+}) => {
     const daysOfWeek = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
     const isToday = new Date().toDateString() === date.toDateString();
     const dateString = date.toISOString().slice(0,10);
@@ -94,7 +101,16 @@ const DayViewContent = ({ date, readings, mates, streaks }: { date: Date, readin
                 {sortedMates.map(mate => {
                     const readingForMate = readings.find(r => r.userId === mate.id && r.date === dateString);
                     const streakLength = getStreakLengthOnDate(mate.id, dateString);
-                    return <StatusCard key={mate.id} mate={mate} reading={readingForMate} streakLength={streakLength} />;
+                    return (
+                      <StatusCard 
+                        key={mate.id} 
+                        mate={mate} 
+                        reading={readingForMate} 
+                        streakLength={streakLength}
+                        isExpanded={expandedCardIds.includes(mate.id)}
+                        onPress={() => onCardPress(mate.id)}
+                      />
+                    );
                 })}
             </ScrollView>
         </View>
@@ -117,6 +133,8 @@ export default function DayViewScreen() {
     const [monthlyDataCache, setMonthlyDataCache] = useState<Record<string, {readings: Reading[], streaks: Streak[]}>>({});
     const [mates, setMates] = useState<Mate[]>([]);
     
+    const [expandedCardIds, setExpandedCardIds] = useState<string[]>([]);
+
     const [modalVisible, setModalVisible] = useState(false);
     const [book, setBook] = useState('');
     const [chapter, setChapter] = useState('');
@@ -181,11 +199,13 @@ export default function DayViewScreen() {
     useEffect(() => {
         pagerRef.current?.setPageWithoutAnimation(1);
         setSharedDate(currentDate);
+        setExpandedCardIds([]); // Close any expanded cards when the date changes
     }, [currentDate, setSharedDate]);
 
     const onPageSelected = (e: { nativeEvent: { position: number } }) => {
         if (e.nativeEvent.position === 1) return;
         
+        // Directly update the date state instead of reloading the whole route
         const newDate = new Date(currentDate);
         newDate.setDate(currentDate.getDate() + (e.nativeEvent.position === 0 ? -1 : 1));
 
@@ -230,6 +250,18 @@ export default function DayViewScreen() {
             router.replace('/');
         }
     };
+
+    const handleCardPress = (mateId: string) => {
+        setExpandedCardIds(prevIds => {
+            if (prevIds.includes(mateId)) {
+                // It's already expanded, so filter it out to collapse it
+                return prevIds.filter(id => id !== mateId);
+            } else {
+                // It's not expanded, so add it to the array to expand it
+                return [...prevIds, mateId];
+            }
+        });
+    };
     
     // Display data for the current month from the cache
     const monthKey = `${currentDate.getFullYear()}-${currentDate.getMonth()}`;
@@ -259,7 +291,14 @@ export default function DayViewScreen() {
             >
                 {daysToDisplay.map((d, index) => (
                     <View key={index}>
-                        <DayViewContent date={d} readings={readings} mates={mates} streaks={streaks}/>
+                        <DayViewContent 
+                          date={d} 
+                          readings={readings} 
+                          mates={mates} 
+                          streaks={streaks}
+                          expandedCardIds={expandedCardIds}
+                          onCardPress={handleCardPress}
+                        />
                     </View>
                 ))}
             </PagerView>
